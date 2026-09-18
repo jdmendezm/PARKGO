@@ -1,4 +1,4 @@
-const API_URL = 'https://parkgo-backend.onrender.com/api/v1'; // Cambiar a http://localhost:3000 si pruebas local
+const API_URL = '/api/v1'; // Usa rutas relativas para producción y local
 let token = localStorage.getItem('parkgo_token');
 
 // Al cargar la página, verificar si hay sesión activa
@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Evento Login
+// Evento de Login
 document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const correo_corporativo = document.getElementById('email').value;
@@ -37,7 +37,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
   }
 });
 
-// Cambiar vistas
+// Funciones para cambiar vistas
 function mostrarDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
@@ -60,50 +60,73 @@ function logout() {
 // Cargar Catálogo desde la API
 async function cargarCatalogo() {
   const grid = document.getElementById('gridCatalogo');
-  grid.innerHTML = '<p class="text-slate-500">Cargando catálogo...</p>';
+  grid.innerHTML = '<p class="text-slate-500 col-span-full text-center py-4">Cargando catálogo...</p>';
 
   try {
-    // Petición a la API usando el Token Bearer
     const res = await fetch(`${API_URL}/web/accesos/validar`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ codigo: 'PARK-8892' }) // Prueba de datos dinámicos
+      body: JSON.stringify({ codigo: 'PARK-8892' })
     });
 
     const data = await res.json();
 
     if (res.ok) {
-      // Mockup visual de tarjeta de catálogo con la respuesta del backend
+      const codigoPase = 'PARK-8892';
       grid.innerHTML = `
         <div class="border rounded-xl p-4 bg-amber-50 border-amber-300 shadow-sm relative">
           <span class="absolute top-3 right-3 text-xs bg-amber-200 text-amber-800 font-bold px-2 py-1 rounded">RESERVADO</span>
           <p class="text-xs text-slate-500 font-bold uppercase">Cupo: ${data.cupo || 'A-101'}</p>
           <h3 class="text-xl font-black text-slate-800 mt-1">${data.vehiculo?.placa || 'KTM-300'}</h3>
           <p class="text-sm text-slate-600 mt-1">${data.usuario?.nombre || 'Luis Vargas'}</p>
-          <button onclick="confirmarCheckIn('PARK-8892')" class="mt-4 w-full bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-emerald-700 transition">
+          <button onclick="confirmarCheckIn('${codigoPase}')" class="mt-4 w-full bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-emerald-700 transition">
             Registrar Check-In
           </button>
         </div>
       `;
     } else {
-      grid.innerHTML = '<p class="text-red-500">Error al cargar datos del catálogo.</p>';
+      grid.innerHTML = '<p class="text-red-500 col-span-full text-center py-4">Error al cargar datos del catálogo.</p>';
     }
   } catch (err) {
-    grid.innerHTML = '<p class="text-red-500">Error de conexión.</p>';
+    grid.innerHTML = '<p class="text-red-500 col-span-full text-center py-4">Error de conexión.</p>';
   }
 }
 
-// Evento Validar Buscador
+// Evento Buscador Directo
 document.getElementById('searchForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const codigo = document.getElementById('codigoPase').value;
-  confirmarCheckIn(codigo);
+  const codigo = document.getElementById('codigoPase').value.trim();
+  if (codigo) {
+    confirmarCheckIn(codigo);
+  }
 });
 
+// Función de Registro de Check-In Real
 async function confirmarCheckIn(codigo) {
-  alert(`Registrando entrada para el pase: ${codigo}`);
-  // Aquí realiza el POST a /accesos/check-in
+  if (!confirm(`¿Confirmar ingreso para el pase ${codigo}?`)) return;
+
+  try {
+    const res = await fetch(`${API_URL}/web/accesos/check-in`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ codigo })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(`✅ ¡Entrada registrada con éxito!\nHora de ingreso: ${new Date().toLocaleTimeString()}`);
+      cargarCatalogo(); // Recargar el catálogo
+    } else {
+      alert(`❌ Error: ${data.mensaje || 'No se pudo realizar el check-in'}`);
+    }
+  } catch (error) {
+    alert('Error al procesar el check-in con el servidor.');
+  }
 }
