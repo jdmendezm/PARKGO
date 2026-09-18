@@ -57,8 +57,9 @@ const checkIn = async (req, res) => {
   const { codigo } = req.body;
 
   try {
+    // 1. Obtener información de la reserva y del usuario
     const reservaQuery = await db.query(
-      `SELECT r.id_reserva, r.id_cupo, r.estado_reserva, c.codigo_espacio 
+      `SELECT r.id_reserva, r.id_cupo, r.id_usuario, r.estado_reserva, c.codigo_espacio 
        FROM reserva r
        JOIN cupo_parqueo c ON r.id_cupo = c.id_cupo
        WHERE r.codigo_alfanumerico = $1`,
@@ -72,26 +73,34 @@ const checkIn = async (req, res) => {
     const reserva = reservaQuery.rows[0];
 
     if (reserva.estado_reserva === 'EN_SITIO') {
-      return res.status(400).json({ message: 'El vehículo ya registró ingreso y se encuentra en sitio.' });
+      return res.status(400).json({ message: 'El vehículo ya se encuentra en sitio.' });
     }
 
     if (reserva.estado_reserva === 'FINALIZADA') {
       return res.status(400).json({ message: 'Esta reserva ya fue completada anteriormente.' });
     }
 
-    // 1. Crear registro de entrada
-    await db.query(
-      `INSERT INTO registro_acceso (id_reserva, hora_entrada) VALUES ($1, CURRENT_TIMESTAMP)`,
-      [reserva.id_reserva]
-    );
+    // 2. Insertar el registro de acceso (con id_usuario de respaldo)
+    try {
+      await db.query(
+        `INSERT INTO registro_acceso (id_reserva, id_usuario, hora_entrada) VALUES ($1, $2, CURRENT_TIMESTAMP)`,
+        [reserva.id_reserva, reserva.id_usuario]
+      );
+    } catch (errInsert) {
+      // Si la columna id_usuario no existe o no es obligatoria, intentar sin ella:
+      await db.query(
+        `INSERT INTO registro_acceso (id_reserva, hora_entrada) VALUES ($1, CURRENT_TIMESTAMP)`,
+        [reserva.id_reserva]
+      );
+    }
 
-    // 2. Cambiar estado de la reserva a 'EN_SITIO'
+    // 3. Cambiar estado de la reserva a 'EN_SITIO'
     await db.query(
       `UPDATE reserva SET estado_reserva = 'EN_SITIO' WHERE id_reserva = $1`,
       [reserva.id_reserva]
     );
 
-    // 3. Ocupar el cupo
+    // 4. Cambiar estado del cupo a 'OCUPADO'
     await db.query(
       `UPDATE cupo_parqueo SET estado_cupo = 'OCUPADO' WHERE id_cupo = $1`,
       [reserva.id_cupo]
@@ -103,7 +112,7 @@ const checkIn = async (req, res) => {
       hora_entrada: new Date().toLocaleTimeString()
     });
   } catch (error) {
-    console.error('Error en Check-In:', error);
+    console.error('Error detallado en Check-In:', error);
     return res.status(500).json({ message: 'Error interno del servidor al procesar ingreso.' });
   }
 };
@@ -155,7 +164,7 @@ const checkOut = async (req, res) => {
       hora_salida: new Date().toLocaleTimeString()
     });
   } catch (error) {
-    console.error('Error en Check-Out:', error);
+    console.error('Error detallado en Check-Out:', error);
     return res.status(500).json({ message: 'Error interno del servidor al procesar la salida.' });
   }
 };
