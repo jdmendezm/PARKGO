@@ -1,37 +1,24 @@
 const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
-
-// Importación de rutas
-const authRoutes = require('./routes/authRoutes');
-const accesoRoutes = require('./routes/accesoRoutes');
-
+const path = require('path');
 const app = express();
 
-// Middlewares globales
-app.use(cors());
+// 1. Middlewares para parsear JSON
 app.use(express.json());
 
-// Registro de endpoints de la API
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/web/accesos', accesoRoutes);
+// 2. Servir archivos estáticos (HTML, JS, CSS) desde la carpeta public
+app.use(express.static(path.join(__dirname, '../public')));
 
-// Ruta de comprobación de salud (Health Check)
+// 3. Rutas de la API (Mantienen el prefijo /api/v1)
+app.use('/api/v1/auth', require('./routes/authRoutes'));
+app.use('/api/v1/web/accesos', require('./routes/accesoRoutes'));
+
+// 4. Ruta por defecto para enviar la interfaz gráfica en la raíz '/'
 app.get('/', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'API REST Backend de PARKGO Operativa 🚀',
-    version: '1.0.0'
-  });
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// Manejo de rutas no encontradas (404)
-app.use((req, res) => {
-  res.status(404).json({ message: 'Ruta no encontrada en el servidor' });
-});
-
-// Puerto de ejecución
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor PARKGO corriendo en el puerto ${PORT}`);
+  console.log(`Servidor PARKGO corriendo en http://localhost:${PORT}`);
 });
