@@ -6,6 +6,10 @@ const login = async (req, res) => {
   const { correo_corporativo, password } = req.body;
 
   try {
+    // Depuración: Ver qué datos están llegando desde la web
+    console.log("--> Intento de login con correo:", correo_corporativo);
+    console.log("--> Password recibida desde el cliente:", password);
+
     // 1. Buscar usuario en la base de datos
     const userQuery = await db.query(
       `SELECT u.*, e.razon_social, s.nombre_sede, a.nombre_area 
@@ -18,25 +22,30 @@ const login = async (req, res) => {
     );
 
     if (userQuery.rows.length === 0) {
+      console.log("❌ ERROR: El correo no existe o el usuario está inactivo en la BD.");
       return res.status(401).json({ message: 'Credenciales inválidas o usuario inactivo' });
     }
 
     const usuario = userQuery.rows[0];
+    console.log("--> Usuario encontrado en la BD:", usuario.correo_corporativo);
+    console.log("--> Password almacenada en la BD:", usuario.password);
 
-    // 2. Validar Contraseña (Soporta Hash Bcrypt y Texto Plano)
+    // 2. Validar Contraseña (Bcrypt o Texto Plano)
     let passValido = false;
 
-    if (usuario.password.startsWith('$2a$') || usuario.password.startsWith('$2b$')) {
-      // Si la BD contiene un hash de Bcrypt
+    if (usuario.password && (usuario.password.startsWith('$2a$') || usuario.password.startsWith('$2b$'))) {
       passValido = await bcrypt.compare(password, usuario.password);
     } else {
-      // Si la BD tiene la clave en texto plano (ej: "Password123")
-      passValido = (password === usuario.password);
+      // Comparación directa ignorando espacios al inicio o final
+      passValido = (password.trim() === String(usuario.password).trim());
     }
 
     if (!passValido) {
+      console.log("❌ ERROR: La contraseña introducida no coincide con la almacenada.");
       return res.status(401).json({ message: 'Credenciales inválidas' });
     }
+
+    console.log("✅ LOGIN EXITOSO para:", usuario.correo_corporativo);
 
     // 3. Generar Token JWT
     const payload = {
