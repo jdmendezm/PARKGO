@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt'); // <-- Agregado para validar el hash
 
 const login = async (req, res) => {
   const { correo_corporativo, password } = req.body;
@@ -22,7 +23,18 @@ const login = async (req, res) => {
 
     const usuario = userQuery.rows[0];
 
-    // 2. Generar Token JWT con la información requerida
+    // 2. Validar Contraseña (Bcrypt o Texto Plano según como la tengas guardada)
+    // Si usaste bcrypt al registrar usuarios:
+    const passValido = await bcrypt.compare(password, usuario.password);
+
+    // *NOTA: Si en tu BD de prueba guardaste las claves en texto plano, usa esto en su lugar:
+    // const passValido = (password === usuario.password);
+
+    if (!passValido) {
+      return res.status(401).json({ message: 'Credenciales inválidas (contraseña incorrecta)' });
+    }
+
+    // 3. Generar Token JWT solo si la clave es correcta
     const payload = {
       id_usuario: usuario.id_usuario,
       id_empresa: usuario.id_empresa,
