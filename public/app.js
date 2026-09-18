@@ -1,7 +1,7 @@
 const API_URL = '/api/v1';
 let token = localStorage.getItem('parkgo_token');
 
-// Verificar sesión activa
+// Verificar sesión activa al cargar
 document.addEventListener('DOMContentLoaded', () => {
   if (token) {
     mostrarDashboard();
@@ -37,7 +37,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
   }
 });
 
-// Control de vistas
+// Control de Vistas
 function mostrarDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
@@ -57,7 +57,7 @@ function logout() {
   mostrarLogin();
 }
 
-// Cargar catálogo de accesos
+// Cargar estado actual de la reserva
 async function cargarCatalogo() {
   const grid = document.getElementById('gridCatalogo');
   if (!grid) return;
@@ -77,16 +77,37 @@ async function cargarCatalogo() {
     const data = await res.json();
 
     if (res.ok) {
-      const codigoPase = 'PARK-8892';
+      const codigoPase = data.codigo || 'PARK-8892';
+      const estado = data.estado || 'ACTIVA';
+
+      let botonAccion = '';
+      let badgeEstado = '';
+
+      if (estado === 'ACTIVA') {
+        badgeEstado = `<span class="absolute top-3 right-3 text-xs bg-amber-200 text-amber-800 font-bold px-2 py-1 rounded">RESERVADO</span>`;
+        botonAccion = `
+          <button onclick="confirmarCheckIn('${codigoPase}')" class="mt-4 w-full bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-emerald-700 transition">
+            Registrar Check-In (Entrada)
+          </button>`;
+      } else if (estado === 'EN_SITIO') {
+        badgeEstado = `<span class="absolute top-3 right-3 text-xs bg-blue-200 text-blue-800 font-bold px-2 py-1 rounded">EN SITIO</span>`;
+        botonAccion = `
+          <button onclick="confirmarCheckOut('${codigoPase}')" class="mt-4 w-full bg-red-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-red-700 transition">
+            Registrar Check-Out (Salida)
+          </button>`;
+      } else {
+        badgeEstado = `<span class="absolute top-3 right-3 text-xs bg-gray-200 text-gray-800 font-bold px-2 py-1 rounded">FINALIZADA</span>`;
+        botonAccion = `
+          <p class="mt-4 text-center text-xs text-slate-500 font-bold">Estancia completada</p>`;
+      }
+
       grid.innerHTML = `
-        <div class="border rounded-xl p-4 bg-amber-50 border-amber-300 shadow-sm relative">
-          <span class="absolute top-3 right-3 text-xs bg-amber-200 text-amber-800 font-bold px-2 py-1 rounded">RESERVADO</span>
+        <div class="border rounded-xl p-4 bg-white shadow-sm relative">
+          ${badgeEstado}
           <p class="text-xs text-slate-500 font-bold uppercase">Cupo: ${data.cupo || 'A-101'}</p>
           <h3 class="text-xl font-black text-slate-800 mt-1">${data.vehiculo?.placa || 'KTM-300'}</h3>
           <p class="text-sm text-slate-600 mt-1">${data.usuario?.nombre || 'Luis Vargas'}</p>
-          <button onclick="confirmarCheckIn('${codigoPase}')" class="mt-4 w-full bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-emerald-700 transition">
-            Registrar Check-In
-          </button>
+          ${botonAccion}
         </div>
       `;
     } else {
@@ -97,7 +118,7 @@ async function cargarCatalogo() {
   }
 }
 
-// Búsqueda manual
+// Búsqueda Manual
 document.getElementById('searchForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const codigo = document.getElementById('codigoPase').value.trim();
@@ -108,7 +129,7 @@ document.getElementById('searchForm')?.addEventListener('submit', async (e) => {
 
 // Acción Check-In
 async function confirmarCheckIn(codigo) {
-  if (!confirm(`¿Confirmar ingreso para el pase ${codigo}?`)) return;
+  if (!confirm(`¿Confirmar ENTRADA para el pase ${codigo}?`)) return;
 
   try {
     const res = await fetch(`${API_URL}/web/accesos/check-in`, {
@@ -123,12 +144,39 @@ async function confirmarCheckIn(codigo) {
     const data = await res.json();
 
     if (res.ok) {
-      alert(`✅ ¡Entrada registrada con éxito!\nHora de ingreso: ${new Date().toLocaleTimeString()}`);
+      alert(`✅ ¡Entrada registrada con éxito!\nHora: ${data.hora_entrada || new Date().toLocaleTimeString()}`);
       cargarCatalogo();
     } else {
-      alert(`❌ Error: ${data.mensaje || data.message || 'No se pudo realizar el check-in'}`);
+      alert(`❌ Error: ${data.message || 'No se pudo registrar la entrada'}`);
     }
   } catch (error) {
-    alert('Error al procesar el check-in con el servidor.');
+    alert('Error al conectar con el servidor.');
+  }
+}
+
+// Acción Check-Out
+async function confirmarCheckOut(codigo) {
+  if (!confirm(`¿Confirmar SALIDA para el pase ${codigo}?`)) return;
+
+  try {
+    const res = await fetch(`${API_URL}/web/accesos/check-out`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ codigo })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(`✅ ¡Salida registrada con éxito!\nCupo ${data.cupo} liberado.\nHora: ${data.hora_salida || new Date().toLocaleTimeString()}`);
+      cargarCatalogo();
+    } else {
+      alert(`❌ Error: ${data.message || 'No se pudo registrar la salida'}`);
+    }
+  } catch (error) {
+    alert('Error al conectar con el servidor.');
   }
 }

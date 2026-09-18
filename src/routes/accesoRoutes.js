@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { validarPase, registrarCheckIn } = require('../controllers/accesoController');
-const { verificarToken } = require('../middlewares/authMiddleware'); // 1. Importas el middleware
+const { validarPase, checkIn, checkOut } = require('../controllers/accesoController');
 
-// 2. Proteges las rutas pasándoles 'verificarToken' antes de la función del controlador
-router.post('/validar', verificarToken, validarPase);
-router.post('/check-in', verificarToken, registrarCheckIn);
+// Rutas del módulo de portería
+router.post('/validar', validarPase);
+router.post('/check-in', checkIn);
+router.post('/check-out', checkOut);
 
 module.exports = router;
