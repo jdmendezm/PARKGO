@@ -1,7 +1,7 @@
-const API_URL = '/api/v1'; // Usa rutas relativas para producción y local
+const API_URL = '/api/v1';
 let token = localStorage.getItem('parkgo_token');
 
-// Al cargar la página, verificar si hay sesión activa
+// Verificar sesión activa
 document.addEventListener('DOMContentLoaded', () => {
   if (token) {
     mostrarDashboard();
@@ -30,14 +30,14 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
       localStorage.setItem('parkgo_token', token);
       mostrarDashboard();
     } else {
-      alert(data.mensaje || 'Credenciales incorrectas');
+      alert(data.message || data.mensaje || 'Credenciales incorrectas');
     }
   } catch (error) {
     alert('Error al conectar con el servidor.');
   }
 });
 
-// Funciones para cambiar vistas
+// Control de vistas
 function mostrarDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
@@ -57,9 +57,11 @@ function logout() {
   mostrarLogin();
 }
 
-// Cargar Catálogo desde la API
+// Cargar catálogo de accesos
 async function cargarCatalogo() {
   const grid = document.getElementById('gridCatalogo');
+  if (!grid) return;
+  
   grid.innerHTML = '<p class="text-slate-500 col-span-full text-center py-4">Cargando catálogo...</p>';
 
   try {
@@ -95,7 +97,7 @@ async function cargarCatalogo() {
   }
 }
 
-// Evento Buscador Directo
+// Búsqueda manual
 document.getElementById('searchForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const codigo = document.getElementById('codigoPase').value.trim();
@@ -104,7 +106,7 @@ document.getElementById('searchForm')?.addEventListener('submit', async (e) => {
   }
 });
 
-// Función de Registro de Check-In Real
+// Acción Check-In
 async function confirmarCheckIn(codigo) {
   if (!confirm(`¿Confirmar ingreso para el pase ${codigo}?`)) return;
 
@@ -122,9 +124,9 @@ async function confirmarCheckIn(codigo) {
 
     if (res.ok) {
       alert(`✅ ¡Entrada registrada con éxito!\nHora de ingreso: ${new Date().toLocaleTimeString()}`);
-      cargarCatalogo(); // Recargar el catálogo
+      cargarCatalogo();
     } else {
-      alert(`❌ Error: ${data.mensaje || 'No se pudo realizar el check-in'}`);
+      alert(`❌ Error: ${data.mensaje || data.message || 'No se pudo realizar el check-in'}`);
     }
   } catch (error) {
     alert('Error al procesar el check-in con el servidor.');
