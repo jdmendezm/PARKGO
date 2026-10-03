@@ -7,6 +7,20 @@ const connectionString = process.env.DATABASE_URL;
 let pool = null;
 let useMock = false;
 
+const refreshDatabaseMode = async () => {
+  if (!pool) return false;
+
+  try {
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB reconnect timeout')), 7000));
+    await Promise.race([pool.query('SELECT 1'), timeout]);
+    useMock = false;
+    return true;
+  } catch (err) {
+    useMock = true;
+    return false;
+  }
+};
+
 const normalizeCupoStatus = (value) => {
   if (!value) return value;
   const normalized = String(value).trim().toUpperCase();
@@ -130,12 +144,6 @@ const ensureDatabaseHealth = async () => {
       WHERE NOT EXISTS (SELECT 1 FROM area WHERE id_area = 1);
     `);
 
-    await pool.query(`
-      UPDATE cupo_parqueo
-      SET estado_disponibilidad = 'LIBRE'
-      WHERE estado_disponibilidad IN ('LIBRE', 'DISPONIBLE');
-    `);
-
     const defaultUsers = [
       {
         id_usuario: 1,
@@ -184,18 +192,6 @@ const ensureDatabaseHealth = async () => {
           user.tipo_documento, user.numero_documento, user.correo_corporativo, user.cargo,
           user.rol_sistema, user.estado_usuario, passwordHash
         ]);
-      } else {
-        await pool.query(`
-          UPDATE usuario
-          SET id_empresa = $2, id_sede = $3, id_area = $4, nombres = $5, apellidos = $6,
-              tipo_documento = $7, numero_documento = $8, cargo = $9, rol_sistema = $10,
-              estado_usuario = $11, password = $12
-          WHERE id_usuario = $1 OR correo_corporativo = $13
-        `, [
-          user.id_usuario, user.id_empresa, user.id_sede, user.id_area, user.nombres, user.apellidos,
-          user.tipo_documento, user.numero_documento, user.cargo, user.rol_sistema,
-          user.estado_usuario, passwordHash, user.correo_corporativo
-        ]);
       }
     }
 
@@ -221,9 +217,57 @@ const ensureDatabaseHealth = async () => {
     }
 
     await pool.query(`
-      UPDATE cupo_parqueo
-      SET estado_disponibilidad = 'LIBRE'
-      WHERE estado_disponibilidad IN ('LIBRE', 'DISPONIBLE');
+      WITH duplicadas_por_usuario AS (
+        SELECT id_reserva,
+               ROW_NUMBER() OVER (
+                 PARTITION BY id_usuario
+                 ORDER BY id_reserva DESC
+               ) AS rn
+        FROM reserva
+        WHERE estado_reserva IN ('ACTIVA', 'EN_USO')
+      )
+      UPDATE reserva r
+      SET estado_reserva = 'CANCELADA'
+      FROM duplicadas_por_usuario d
+      WHERE r.id_reserva = d.id_reserva
+        AND d.rn > 1;
+    `);
+
+    await pool.query(`
+      WITH duplicadas_por_cupo AS (
+        SELECT id_reserva,
+               ROW_NUMBER() OVER (
+                 PARTITION BY id_cupo
+                 ORDER BY id_reserva DESC
+               ) AS rn
+        FROM reserva
+        WHERE estado_reserva IN ('ACTIVA', 'EN_USO')
+      )
+      UPDATE reserva r
+      SET estado_reserva = 'CANCELADA'
+      FROM duplicadas_por_cupo d
+      WHERE r.id_reserva = d.id_reserva
+        AND d.rn > 1;
+    `);
+
+    await pool.query(`
+      UPDATE cupo_parqueo c
+      SET estado_disponibilidad = CASE
+        WHEN c.estado_disponibilidad = 'INHABILITADO' THEN 'INHABILITADO'
+        WHEN EXISTS (
+          SELECT 1
+          FROM reserva r
+          WHERE r.id_cupo = c.id_cupo
+            AND r.estado_reserva = 'EN_USO'
+        ) THEN 'OCUPADO'
+        WHEN EXISTS (
+          SELECT 1
+          FROM reserva r
+          WHERE r.id_cupo = c.id_cupo
+            AND r.estado_reserva = 'ACTIVA'
+        ) THEN 'RESERVADO'
+        ELSE 'LIBRE'
+      END;
     `);
 
     console.log('✅ Base de datos PARKGO verificada y corregida automáticamente.');
@@ -274,35 +318,35 @@ const mockStore = {
   usuarios: [
     {
       id_usuario: 1,
-      correo_corporativo: 'guarda@parkgo.com',
-      password: passwordGuardaHash,
+      correo_corporativo: 'carlos.guarda@sanmateo.edu.co',
+      password: bcrypt.hashSync('Password123', salt),
       nombres: 'Carlos',
-      apellidos: 'Rodríguez',
+      apellidos: 'Guarda',
       cargo: 'Guarda de Seguridad',
       rol_sistema: 'GUARDA',
       estado_usuario: true,
       id_empresa: 1,
       id_sede: 1,
       id_area: 1,
-      razon_social: 'PARKGO Corp',
-      nombre_sede: 'Sede Principal Calle 100',
-      nombre_area: 'Seguridad y Control'
+      razon_social: 'Fundación Universitaria San Mateo',
+      nombre_sede: 'Sede Principal Calle 35',
+      nombre_area: 'Tecnología e Sistemas'
     },
     {
       id_usuario: 2,
-      correo_corporativo: 'empleado@parkgo.com',
-      password: passwordEmpleadoHash,
-      nombres: 'María',
-      apellidos: 'Gómez',
-      cargo: 'Ingeniera de Software',
-      rol_sistema: 'EMPLEADO',
+      correo_corporativo: 'luis.vargas@sanmateo.edu.co',
+      password: bcrypt.hashSync('Password123', salt),
+      nombres: 'Luis',
+      apellidos: 'Vargas',
+      cargo: 'Analista de Sistemas',
+      rol_sistema: 'EMPLEADO_CONDUCTOR',
       estado_usuario: true,
       id_empresa: 1,
       id_sede: 1,
-      id_area: 2,
-      razon_social: 'PARKGO Corp',
-      nombre_sede: 'Sede Principal Calle 100',
-      nombre_area: 'Tecnología'
+      id_area: 1,
+      razon_social: 'Fundación Universitaria San Mateo',
+      nombre_sede: 'Sede Principal Calle 35',
+      nombre_area: 'Tecnología e Sistemas'
     }
   ],
   cupos: [
@@ -363,9 +407,33 @@ const executeQuery = async (text, params = []) => {
       const res = await Promise.race([pool.query(text, params), timeout]);
       return res;
     } catch (err) {
+      const isConnectionError = err.message === 'Query Timeout' ||
+        /^08/.test(err.code || '') ||
+        ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH', '57P01', '57P02', '57P03'].includes(err.code);
+      if (!isConnectionError) throw err;
+
       console.warn('\u26a0\ufe0f Query fall\u00f3 o timeout, usando mock:', err.message);
+      const reconnected = await refreshDatabaseMode();
+      if (reconnected) {
+        try {
+          const retryTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Retry Query Timeout')), 4000));
+          return await Promise.race([pool.query(text, params), retryTimeout]);
+        } catch (retryErr) {
+          const retryIsConnectionError = retryErr.message === 'Retry Query Timeout' ||
+            /^08/.test(retryErr.code || '') ||
+            ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH', '57P01', '57P02', '57P03'].includes(retryErr.code);
+          if (!retryIsConnectionError) throw retryErr;
+          console.warn('⚠️ Reintento también falló, usando mock de respaldo:', retryErr.message);
+        }
+      }
       useMock = true;
     }
+  }
+
+  if (useMock && /^\s*(INSERT|UPDATE|DELETE)\b/i.test(text)) {
+    const err = new Error('La base de datos en la nube no está disponible; no se guardaron los cambios.');
+    err.status = 503;
+    throw err;
   }
 
   const queryUpper = text.toUpperCase();
@@ -373,7 +441,10 @@ const executeQuery = async (text, params = []) => {
   // 1. Validar pase por código alfanumérico (Prioridad alta)
   if (queryUpper.includes('CODIGO_ALFANUMERICO =') || queryUpper.includes('CODIGO_ALFANUMERICO=')) {
     const codigo = params[0];
-    const res = mockStore.reservas.find(r => r.codigo_alfanumerico === codigo);
+    const res = mockStore.reservas.find(r =>
+      r.codigo_alfanumerico === codigo &&
+      ['ACTIVA', 'EN_USO', 'EN_SITIO'].includes(r.estado_reserva)
+    );
     if (!res) return { rows: [] };
 
     const cupo = mockStore.cupos.find(c => c.id_cupo === res.id_cupo) || {};
@@ -408,7 +479,7 @@ const executeQuery = async (text, params = []) => {
       nombres: params[2],
       apellidos: params[3],
       cargo: params[4] || 'Empleado',
-      rol_sistema: 'EMPLEADO',
+      rol_sistema: 'EMPLEADO_CONDUCTOR',
       estado_usuario: true,
       id_empresa: 1,
       id_sede: 1,
@@ -433,15 +504,18 @@ const executeQuery = async (text, params = []) => {
   // 3. Catálogo de parqueadero
   if (queryUpper.includes('CATALOGO') || queryUpper.includes('FROM CUPO_PARQUEO')) {
     const list = mockStore.cupos.map(cupo => {
-      const reserva = mockStore.reservas.find(r => r.id_cupo === cupo.id_cupo && r.estado_reserva !== 'FINALIZADA');
+      const reserva = mockStore.reservas
+        .filter(r => r.id_cupo === cupo.id_cupo && ['ACTIVA', 'EN_USO', 'EN_SITIO'].includes(r.estado_reserva))
+        .sort((a, b) => Number(b.id_reserva || 0) - Number(a.id_reserva || 0))[0] || null;
+      const estadoDisponible = reserva ? cupo.estado_disponibilidad || cupo.estado_cupo || 'RESERVADO' : (cupo.estado_disponibilidad || cupo.estado_cupo || 'LIBRE');
       const vehiculo = reserva ? mockStore.vehiculos.find(v => v.id_vehiculo === reserva.id_vehiculo) : null;
       const usuario = reserva ? mockStore.usuarios.find(u => u.id_usuario === reserva.id_usuario) : null;
       return {
         id_cupo: cupo.id_cupo,
         codigo_espacio: cupo.codigo_espacio,
         tipo_cupo: cupo.tipo_cupo,
-        estado_cupo: cupo.estado_cupo,
-        piso: cupo.piso,
+        estado_cupo: estadoDisponible === 'LIBRE' ? 'DISPONIBLE' : estadoDisponible,
+        piso: cupo.piso_nivel || cupo.piso,
         codigo_pase: reserva ? reserva.codigo_alfanumerico : null,
         estado_reserva: reserva ? reserva.estado_reserva : null,
         placa: vehiculo ? vehiculo.placa : null,
@@ -457,7 +531,14 @@ const executeQuery = async (text, params = []) => {
     const nuevoEstado = params[0];
     const idReserva = params[1];
     const res = mockStore.reservas.find(r => r.id_reserva == idReserva);
-    if (res) res.estado_reserva = nuevoEstado;
+    if (res) {
+      res.estado_reserva = nuevoEstado;
+      const cupo = mockStore.cupos.find(c => c.id_cupo === res.id_cupo);
+      if (cupo && ['COMPLETADA', 'FINALIZADA'].includes(nuevoEstado)) {
+        cupo.estado_disponibilidad = 'LIBRE';
+        cupo.estado_cupo = 'LIBRE';
+      }
+    }
     return { rowCount: 1 };
   }
 
@@ -466,7 +547,10 @@ const executeQuery = async (text, params = []) => {
     const nuevoEstado = params[0];
     const idCupo = params[1];
     const cupo = mockStore.cupos.find(c => c.id_cupo == idCupo);
-    if (cupo) cupo.estado_cupo = nuevoEstado;
+    if (cupo) {
+      cupo.estado_disponibilidad = nuevoEstado === 'LIBRE' ? 'LIBRE' : nuevoEstado;
+      cupo.estado_cupo = nuevoEstado === 'LIBRE' ? 'LIBRE' : nuevoEstado;
+    }
     return { rowCount: 1 };
   }
 
@@ -497,5 +581,25 @@ const executeQuery = async (text, params = []) => {
 
 module.exports = {
   query: executeQuery,
+  withTransaction: async (callback) => {
+    if (!pool || useMock) {
+      const err = new Error('La base de datos en la nube no está disponible; no se guardaron los cambios.');
+      err.status = 503;
+      throw err;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await callback((text, params = []) => client.query(text, params));
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
   getMockStore: () => mockStore
 };

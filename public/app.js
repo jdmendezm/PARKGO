@@ -1,11 +1,46 @@
 // PARKGO - Aplicación Client-Side para Portería Web y Empleado Celular
 const API_URL = '/api/v1';
 
-let currentToken = localStorage.getItem('parkgo_token');
+let currentToken = null;
 let currentUser = null;
 let currentInterface = 'PORTERIA'; // 'PORTERIA' o 'EMPLEADO'
 let catalogoCache = [];
 let filtroActual = 'TODOS';
+
+function safeGetStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (err) {
+    return null;
+  }
+}
+
+function safeSetStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    // Ignorar si el navegador bloquea almacenamiento local.
+  }
+}
+
+function safeRemoveStorage(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (err) {
+    // Ignorar si el navegador bloquea almacenamiento local.
+  }
+}
+
+currentToken = safeGetStorage('parkgo_token');
+const storedUser = safeGetStorage('parkgo_user');
+if (storedUser) {
+  try {
+    currentUser = JSON.parse(storedUser);
+  } catch (err) {
+    currentUser = null;
+    safeRemoveStorage('parkgo_user');
+  }
+}
 
 // Inicialización de la Aplicación
 document.addEventListener('DOMContentLoaded', () => {
@@ -30,6 +65,11 @@ function normalizeRoleLabel(rol) {
   };
 
   return mappings[rol] || (rol ? rol.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Usuario');
+}
+
+function resolveDefaultInterfaceForUser(user) {
+  if (!user || !user.rol) return 'PORTERIA';
+  return user.rol === 'EMPLEADO' || user.rol === 'EMPLEADO_CONDUCTOR' ? 'EMPLEADO' : 'PORTERIA';
 }
 
 // Autocompletado rápido de formulario de login
@@ -67,15 +107,9 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     if (res.ok && data.token) {
       currentToken = data.token;
       currentUser = data.usuario;
-      localStorage.setItem('parkgo_token', currentToken);
-      
-      // Ajustar la interfaz según el rol por defecto
-      if (currentUser.rol === 'EMPLEADO') {
-        currentInterface = 'EMPLEADO';
-      } else {
-        currentInterface = 'PORTERIA';
-      }
-
+      safeSetStorage('parkgo_token', currentToken);
+      safeSetStorage('parkgo_user', JSON.stringify(currentUser));
+      currentInterface = resolveDefaultInterfaceForUser(currentUser);
       inicializarDashboard();
     } else {
       alert(`❌ Error de autenticación: ${data.message || 'Credenciales incorrectas'}`);
@@ -87,6 +121,11 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
 
 // Verificar token guardado en el servidor
 async function verificarSesion() {
+  if (!currentToken) {
+    mostrarLogin();
+    return;
+  }
+
   try {
     const res = await fetch(`${API_URL}/auth/me`, {
       headers: { 'Authorization': `Bearer ${currentToken}` }
@@ -95,6 +134,8 @@ async function verificarSesion() {
 
     if (res.ok && data.usuario) {
       currentUser = data.usuario;
+      safeSetStorage('parkgo_user', JSON.stringify(currentUser));
+      currentInterface = resolveDefaultInterfaceForUser(currentUser);
       inicializarDashboard();
     } else {
       logout();
@@ -114,6 +155,7 @@ function inicializarDashboard() {
   document.getElementById('userNameDisplay').innerText = userName;
   document.getElementById('userRoleBadge').innerText = normalizeRoleLabel(currentUser.rol || 'USUARIO');
 
+  currentInterface = resolveDefaultInterfaceForUser(currentUser);
   switchInterface(currentInterface);
 }
 
@@ -157,16 +199,28 @@ function switchInterface(targetInterface) {
 
 // Logout
 function logout() {
-  localStorage.removeItem('parkgo_token');
   currentToken = null;
   currentUser = null;
-  document.getElementById('loginSection').classList.remove('hidden');
+  safeRemoveStorage('parkgo_token');
+  safeRemoveStorage('parkgo_user');
+
+  const loginSection = document.getElementById('loginSection');
+  if (loginSection) loginSection.classList.remove('hidden');
+
   const regSec = document.getElementById('registroSection');
   if (regSec) regSec.classList.add('hidden');
-  document.getElementById('userInfoHeader').classList.add('hidden');
-  document.getElementById('viewSelectorGroup').classList.add('hidden');
-  document.getElementById('interfacePorteriaWeb').classList.add('hidden');
-  document.getElementById('interfaceEmpleadoCelular').classList.add('hidden');
+
+  const userInfo = document.getElementById('userInfoHeader');
+  if (userInfo) userInfo.classList.add('hidden');
+
+  const selector = document.getElementById('viewSelectorGroup');
+  if (selector) selector.classList.add('hidden');
+
+  const porteriaView = document.getElementById('interfacePorteriaWeb');
+  if (porteriaView) porteriaView.classList.add('hidden');
+
+  const empleadoView = document.getElementById('interfaceEmpleadoCelular');
+  if (empleadoView) empleadoView.classList.add('hidden');
 }
 
 function mostrarLogin() {

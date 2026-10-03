@@ -17,6 +17,15 @@ async function main() {
       ORDER BY table_name, ordinal_position
     `);
 
+    const restricciones = await pool.query(`
+      SELECT tc.table_name, tc.constraint_name, cc.check_clause
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.check_constraints cc
+        USING (constraint_catalog, constraint_schema, constraint_name)
+      WHERE tc.constraint_schema = 'public' AND tc.constraint_type = 'CHECK'
+      ORDER BY tc.table_name, tc.constraint_name
+    `);
+
     const esquema = {};
     tablas.rows.forEach(row => {
       if (!esquema[row.table_name]) esquema[row.table_name] = [];
@@ -32,6 +41,11 @@ async function main() {
     if (Object.keys(esquema).length === 0) {
       console.log('⚠️  No hay tablas en el esquema público. La DB está vacía.');
     }
+
+    console.log('\n=== RESTRICCIONES CHECK ===');
+    restricciones.rows.forEach(row => {
+      console.log(`${row.table_name}.${row.constraint_name}: ${row.check_clause}`);
+    });
 
     process.exit(0);
   } catch (e) {

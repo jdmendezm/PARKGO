@@ -8,6 +8,15 @@ class AccesoService {
    */
   static async obtenerCatalogo() {
     const result = await db.query(`
+      WITH reserva_activa AS (
+        SELECT r.*,
+               ROW_NUMBER() OVER (
+                 PARTITION BY r.id_cupo
+                 ORDER BY r.id_reserva DESC
+               ) AS rn
+        FROM reserva r
+        WHERE r.estado_reserva IN ('ACTIVA', 'EN_USO')
+      )
       SELECT
         c.id_cupo,
         c.codigo_espacio,
@@ -23,8 +32,8 @@ class AccesoService {
         v.marca || ' ' || v.modelo AS vehiculo_info,
         u.nombres || ' ' || u.apellidos AS nombre_usuario
       FROM cupo_parqueo c
-      LEFT JOIN reserva r
-        ON r.id_cupo = c.id_cupo AND r.estado_reserva IN ('ACTIVA','EN_SITIO')
+      LEFT JOIN reserva_activa r
+        ON r.id_cupo = c.id_cupo AND r.rn = 1
       LEFT JOIN vehiculo v ON r.id_vehiculo = v.id_vehiculo
       LEFT JOIN usuario u ON r.id_usuario   = u.id_usuario
       ORDER BY c.codigo_espacio
@@ -60,7 +69,8 @@ class AccesoService {
        JOIN cupo_parqueo c ON r.id_cupo    = c.id_cupo
        JOIN vehiculo     v ON r.id_vehiculo = v.id_vehiculo
        JOIN usuario      u ON r.id_usuario  = u.id_usuario
-       WHERE r.codigo_alfanumerico = $1`,
+       WHERE r.codigo_alfanumerico = $1
+         AND r.estado_reserva IN ('ACTIVA', 'EN_USO')`,
       [codigoLimpio]
     );
 
@@ -102,62 +112,47 @@ class AccesoService {
 
     const codigoLimpio = String(codigo).trim().toUpperCase();
 
-    const result = await db.query(
-      `SELECT r.id_reserva, r.id_cupo, r.id_usuario, r.estado_reserva, c.codigo_espacio
-       FROM reserva r
-       JOIN cupo_parqueo c ON r.id_cupo = c.id_cupo
-       WHERE r.codigo_alfanumerico = $1`,
-      [codigoLimpio]
-    );
+    return db.withTransaction(async query => {
+      const result = await query(
+        `SELECT r.id_reserva, r.id_cupo, r.estado_reserva, c.codigo_espacio
+         FROM reserva r
+         JOIN cupo_parqueo c ON r.id_cupo = c.id_cupo
+         WHERE r.codigo_alfanumerico = $1
+         FOR UPDATE OF r, c`,
+        [codigoLimpio]
+      );
 
-    if (!result.rows || result.rows.length === 0) {
-      const err = new Error('Reserva no encontrada.');
-      err.status = 404;
-      throw err;
-    }
+      if (!result.rows || result.rows.length === 0) {
+        const err = new Error('Reserva no encontrada.');
+        err.status = 404;
+        throw err;
+      }
 
-    const reserva = result.rows[0];
+      const reserva = result.rows[0];
+      if (reserva.estado_reserva !== 'ACTIVA') {
+        const err = new Error(reserva.estado_reserva === 'EN_USO'
+          ? 'El vehículo ya se encuentra dentro de las instalaciones.'
+          : 'Esta reserva no está disponible para Check-In.');
+        err.status = 409;
+        throw err;
+      }
 
-    if (reserva.estado_reserva === 'EN_SITIO') {
-      const err = new Error('El vehículo ya se encuentra en sitio dentro de las instalaciones.');
-      err.status = 400;
-      throw err;
-    }
+      await query('LOCK TABLE registro_acceso IN EXCLUSIVE MODE');
+      const siguienteId = await query('SELECT COALESCE(MAX(id_acceso), 0) + 1 AS siguiente_id FROM registro_acceso');
+      await query(
+        `INSERT INTO registro_acceso (id_acceso, id_reserva, id_guarda_ingreso, fecha_hora_ingreso, estado_acceso)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 'EN_INSTALACION')`,
+        [siguienteId.rows[0].siguiente_id, reserva.id_reserva, idGuarda || null]
+      );
+      await query(`UPDATE reserva SET estado_reserva = 'EN_USO' WHERE id_reserva = $1`, [reserva.id_reserva]);
+      await query(`UPDATE cupo_parqueo SET estado_disponibilidad = 'OCUPADO' WHERE id_cupo = $1`, [reserva.id_cupo]);
 
-    if (reserva.estado_reserva === 'FINALIZADA') {
-      const err = new Error('Esta reserva ya fue completada anteriormente.');
-      err.status = 400;
-      throw err;
-    }
-
-    // 1. Insertar en registro_acceso con id generado para cumplir la clave/not null del esquema real de Neon
-    const siguienteId = await db.query(
-      `SELECT COALESCE(MAX(id_acceso), 0) + 1 AS siguiente_id FROM registro_acceso`
-    );
-
-    await db.query(
-      `INSERT INTO registro_acceso (id_acceso, id_reserva, id_guarda_ingreso, fecha_hora_ingreso, estado_acceso)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 'ACTIVO')`,
-      [siguienteId.rows[0].siguiente_id, reserva.id_reserva, idGuarda || null]
-    );
-
-    // 2. Actualizar estado de la reserva a EN_SITIO
-    await db.query(
-      `UPDATE reserva SET estado_reserva = 'EN_SITIO' WHERE id_reserva = $1`,
-      [reserva.id_reserva]
-    );
-
-    // 3. Actualizar estado del cupo a OCUPADO (columna real: estado_disponibilidad)
-    await db.query(
-      `UPDATE cupo_parqueo SET estado_disponibilidad = 'OCUPADO' WHERE id_cupo = $1`,
-      [reserva.id_cupo]
-    );
-
-    return {
-      message: '✅ Check-In registrado exitosamente en portería.',
-      cupo: reserva.codigo_espacio,
-      hora_entrada: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    };
+      return {
+        message: 'Check-In registrado exitosamente en portería.',
+        cupo: reserva.codigo_espacio,
+        hora_entrada: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      };
+    });
   }
 
   /**
@@ -172,47 +167,38 @@ class AccesoService {
 
     const codigoLimpio = String(codigo).trim().toUpperCase();
 
-    const result = await db.query(
-      `SELECT r.id_reserva, r.id_cupo, r.estado_reserva, c.codigo_espacio
-       FROM reserva r
-       JOIN cupo_parqueo c ON r.id_cupo = c.id_cupo
-       WHERE r.codigo_alfanumerico = $1`,
-      [codigoLimpio]
-    );
+    return db.withTransaction(async query => {
+      const result = await query(
+        `SELECT r.id_reserva, r.id_cupo, r.estado_reserva, c.codigo_espacio
+         FROM reserva r
+         JOIN cupo_parqueo c ON r.id_cupo = c.id_cupo
+         WHERE r.codigo_alfanumerico = $1
+         FOR UPDATE OF r, c`,
+        [codigoLimpio]
+      );
 
-    if (!result.rows || result.rows.length === 0) {
-      const err = new Error('No se encontró un vehículo activo en sitio con este código.');
-      err.status = 404;
-      throw err;
-    }
+      if (!result.rows || result.rows.length === 0 || result.rows[0].estado_reserva !== 'EN_USO') {
+        const err = new Error('No se encontró un vehículo activo en sitio con este código.');
+        err.status = 404;
+        throw err;
+      }
 
-    const reserva = result.rows[0];
+      const reserva = result.rows[0];
+      await query(
+        `UPDATE registro_acceso
+         SET fecha_hora_salida = CURRENT_TIMESTAMP, estado_acceso = 'FINALIZADO'
+         WHERE id_reserva = $1 AND estado_acceso = 'EN_INSTALACION'`,
+        [reserva.id_reserva]
+      );
+      await query(`UPDATE reserva SET estado_reserva = 'COMPLETADA' WHERE id_reserva = $1`, [reserva.id_reserva]);
+      await query(`UPDATE cupo_parqueo SET estado_disponibilidad = 'LIBRE' WHERE id_cupo = $1`, [reserva.id_cupo]);
 
-    // 1. Registrar hora de salida en registro_acceso (columna real: fecha_hora_salida, estado_acceso)
-    await db.query(
-      `UPDATE registro_acceso
-       SET fecha_hora_salida = CURRENT_TIMESTAMP, estado_acceso = 'CERRADO'
-       WHERE id_reserva = $1 AND estado_acceso = 'ACTIVO'`,
-      [reserva.id_reserva]
-    );
-
-    // 2. Cambiar estado de la reserva a FINALIZADA
-    await db.query(
-      `UPDATE reserva SET estado_reserva = 'FINALIZADA' WHERE id_reserva = $1`,
-      [reserva.id_reserva]
-    );
-
-    // 3. Liberar el cupo (columna real: estado_disponibilidad)
-    await db.query(
-      `UPDATE cupo_parqueo SET estado_disponibilidad = 'LIBRE' WHERE id_cupo = $1`,
-      [reserva.id_cupo]
-    );
-
-    return {
-      message: '✅ Check-Out registrado exitosamente. Cupo liberado.',
-      cupo: reserva.codigo_espacio,
-      hora_salida: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    };
+      return {
+        message: 'Check-Out registrado exitosamente. Cupo liberado.',
+        cupo: reserva.codigo_espacio,
+        hora_salida: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      };
+    });
   }
 }
 

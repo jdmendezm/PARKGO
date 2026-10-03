@@ -107,7 +107,7 @@ class AuthService {
          (correo_corporativo, password, nombres, apellidos, cargo,
           tipo_documento, numero_documento,
           rol_sistema, estado_usuario, id_empresa, id_sede, id_area)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'EMPLEADO', TRUE, 1, 1, 1)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'EMPLEADO_CONDUCTOR', TRUE, 1, 1, 1)
        RETURNING id_usuario, correo_corporativo, nombres, apellidos, cargo, rol_sistema`,
       [correo_corporativo.trim(), passwordHash, nombres.trim(), apellidos.trim(),
        (cargo || 'Empleado').trim(), tipoDoc, numDoc]
