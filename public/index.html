@@ -2,78 +2,464 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PARKGO - Panel de Portería</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>PARKGO - Gestor de Parqueaderos (Portería Web & Empleado)</title>
   <!-- Tailwind CSS por CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Estilos Personalizados PARKGO (Naranja & Blanco) -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-800 font-sans">
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
 
-  <!-- Encabezado -->
-  <header class="bg-blue-900 text-white shadow-lg p-4 flex justify-between items-center">
-    <h1 class="text-2xl font-bold tracking-wider">PARKGO <span class="text-sm font-normal text-blue-300">| Portería</span></h1>
-    <div id="userInfo" class="text-sm hidden">
-      <span id="userRole" class="bg-blue-700 px-3 py-1 rounded-full font-semibold">Guarda</span>
-      <button onclick="logout()" class="ml-3 text-red-300 hover:text-red-100 underline text-xs">Cerrar Sesión</button>
+  <!-- HEADER PRINCIPAL PARKGO (Naranja y Blanco) -->
+  <header class="bg-orange-brand text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+      
+      <!-- LOGO E IDENTIFICADOR DE SISTEMA -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-orange-600 font-extrabold text-xl shadow-md">
+          P
+        </div>
+        <div>
+          <h1 class="text-xl font-extrabold tracking-tight flex items-center gap-2">
+            PARKGO <span class="text-xs bg-orange-700/60 px-2 py-0.5 rounded-full font-medium border border-orange-400/30">v2.0 Security</span>
+          </h1>
+          <p class="text-xs text-orange-100 font-medium">Control de Accesos & Reservas Institucionales</p>
+        </div>
+      </div>
+
+      <!-- SWITCHER DE VISTAS (PORTERÍA WEB VS EMPLEADO CELULAR) -->
+      <div id="viewSelectorGroup" class="hidden flex items-center bg-orange-950/20 p-1 rounded-xl border border-orange-400/30">
+        <button id="btnViewPorteria" onclick="switchInterface('PORTERIA')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-white text-orange-600 shadow-sm">
+          <i class="fa-solid fa-building-shield"></i> Portería Web
+        </button>
+        <button id="btnViewEmpleado" onclick="switchInterface('EMPLEADO')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-white hover:bg-orange-700/50">
+          <i class="fa-solid fa-mobile-screen-button"></i> Empleado Celular
+        </button>
+      </div>
+
+      <!-- INFORMACIÓN DE USUARIO Y LOGOUT -->
+      <div id="userInfoHeader" class="hidden flex items-center gap-3">
+        <div class="text-right">
+          <p id="userNameDisplay" class="text-sm font-bold leading-tight">Cargando...</p>
+          <span id="userRoleBadge" class="inline-block bg-orange-800/80 text-orange-100 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-orange-300/30">Guarda</span>
+        </div>
+        <button onclick="logout()" class="bg-white/15 hover:bg-white/25 text-white p-2 rounded-lg text-sm transition" title="Cerrar Sesión">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+
     </div>
   </header>
 
-  <!-- Contenedor Principal -->
-  <main class="max-w-7xl mx-auto p-4 md:p-6">
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6">
 
-    <!-- FORMULARIO DE LOGIN (Modal si no hay Token) -->
-    <section id="loginSection" class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md border mt-10">
-      <h2 class="text-xl font-bold text-center mb-6 text-blue-900">Iniciar Sesión Portería</h2>
-      <form id="loginForm" class="space-y-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700">Correo Corporativo</label>
-          <input type="email" id="email" required class="w-full mt-1 p-2 border rounded-md focus:ring-2 focus:ring-blue-500 border-slate-300">
+    <!-- ========================================== -->
+    <!-- SECTION 1: SECCIÓN DE LOGIN AUTÉNTICO JWT -->
+    <!-- ========================================== -->
+    <section id="loginSection" class="max-w-md mx-auto mt-8 mb-12">
+      <div class="bg-white rounded-3xl shadow-xl border border-orange-100 p-8 relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-3 bg-orange-brand"></div>
+        
+        <div class="text-center mb-6">
+          <div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 text-3xl mx-auto mb-3 border border-orange-100">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-slate-800">Iniciar Sesión PARKGO</h2>
+          <p class="text-xs text-slate-500 mt-1">Ingrese sus credenciales de guarda o empleado corporativo</p>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700">Contraseña</label>
-          <input type="password" id="password" required class="w-full mt-1 p-2 border rounded-md focus:ring-2 focus:ring-blue-500 border-slate-300">
-        </div>
-        <button type="submit" class="w-full bg-blue-900 text-white py-2 rounded-md font-semibold hover:bg-blue-800 transition">Ingresar</button>
-      </form>
-    </section>
 
-    <!-- PANEL DE CONTROL (Se muestra tras iniciar sesión) -->
-    <div id="dashboardSection" class="hidden space-y-6">
+        <!-- FORMULARIO DE LOGIN -->
+        <form id="loginForm" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Correo Corporativo</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-regular fa-envelope"></i></span>
+              <input type="email" id="loginEmail" required placeholder="ejemplo@parkgo.com"
+                class="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+            </div>
+          </div>
 
-      <!-- Buscador por Código -->
-      <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h2 class="text-lg font-bold mb-3 text-slate-700">Buscador / Validación Directa</h2>
-        <form id="searchForm" class="flex gap-3">
-          <input type="text" id="codigoPase" placeholder="Ingrese o escanee código (Ej: PARK-8892)" required
-            class="flex-1 p-3 border border-slate-300 rounded-lg text-lg uppercase focus:ring-2 focus:ring-blue-500">
-          <button type="submit" class="bg-blue-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800 transition">
-            Validar
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Contraseña</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-key"></i></span>
+              <input type="password" id="loginPassword" required placeholder="••••••••"
+                class="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+            </div>
+          </div>
+
+          <button type="submit" class="w-full py-3 rounded-xl btn-orange text-sm shadow-orange flex items-center justify-center gap-2">
+            <i class="fa-solid fa-shield-halved"></i> Autenticar con JWT Seguro
           </button>
         </form>
+
+        <!-- BOTONES DE AUTOCOMPLETADO RÁPIDO PARA DEMOSTRACIÓN -->
+        <div class="mt-6 pt-6 border-t border-slate-100 text-center">
+          <p class="text-xs font-bold text-slate-400 mb-3 uppercase">Cuentas de Prueba Disponibles:</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="autofillLogin('carlos.guarda@sanmateo.edu.co', 'Password123')" class="py-2 px-3 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-xl border border-orange-200 transition text-left flex items-center gap-2">
+              <i class="fa-solid fa-user-shield text-orange-500"></i>
+              <div>
+                <p class="leading-none">Guarda Web</p>
+                <span class="text-[10px] text-orange-400 font-normal">carlos.guarda@sanmateo.edu.co</span>
+              </div>
+            </button>
+            <button onclick="autofillLogin('luis.vargas@sanmateo.edu.co', 'Password123')" class="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition text-left flex items-center gap-2">
+              <i class="fa-solid fa-user-tie text-slate-500"></i>
+              <div>
+                <p class="leading-none">Empleado Celular</p>
+                <span class="text-[10px] text-slate-400 font-normal">luis.vargas@sanmateo.edu.co</span>
+              </div>
+            </button>
+          </div>
+        </div>
+          <!-- ENLACE A REGISTRO -->
+          <div class="mt-4 text-center">
+            <p class="text-xs text-slate-500">¿Eres empleado nuevo?
+              <button onclick="mostrarFormularioRegistro()" class="text-orange-600 font-bold hover:underline ml-1">Crear cuenta</button>
+            </p>
+          </div>
+
+        </div>
       </section>
 
-      <!-- Catálogo de Cupos y Vehículos -->
-      <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-lg font-bold text-slate-700">Catálogo de Cupos y Vehículos</h2>
-          <!-- Filtros -->
-          <div class="flex gap-2">
-            <button onclick="filtrarCatalogo('TODOS')" class="px-3 py-1 bg-slate-200 text-slate-700 rounded-full text-xs font-semibold hover:bg-slate-300">Todos</button>
-            <button onclick="filtrarCatalogo('RESERVADO')" class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold hover:bg-amber-200">Reservados</button>
-            <button onclick="filtrarCatalogo('OCUPADO')" class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-semibold hover:bg-red-200">Ocupados</button>
+      <!-- SECCIÓN DE REGISTRO DE CUENTA NUEVA -->
+      <section id="registroSection" class="max-w-md mx-auto mt-8 mb-12 hidden">
+        <div class="bg-white rounded-3xl shadow-xl border border-orange-100 p-8 relative overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-3 bg-orange-brand"></div>
+
+          <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 text-3xl mx-auto mb-3 border border-orange-100">
+              <i class="fa-solid fa-user-plus"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800">Crear Cuenta PARKGO</h2>
+            <p class="text-xs text-slate-500 mt-1">Registro para nuevos empleados del sistema</p>
+          </div>
+
+          <form id="registroForm" class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Nombres</label>
+                <input type="text" id="regNombres" required placeholder="Juan"
+                  class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Apellidos</label>
+                <input type="text" id="regApellidos" required placeholder="Pérez"
+                  class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Correo Corporativo</label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-regular fa-envelope"></i></span>
+                <input type="email" id="regEmail" required placeholder="juan.perez@empresa.com"
+                  class="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Cargo</label>
+              <input type="text" id="regCargo" placeholder="Ingeniero de Software, Contador..."
+                class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Contraseña</label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-key"></i></span>
+                <input type="password" id="regPassword" required placeholder="Mínimo 6 caracteres"
+                  class="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Confirmar Contraseña</label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fa-solid fa-shield-check"></i></span>
+                <input type="password" id="regPasswordConfirm" required placeholder="Repite tu contraseña"
+                  class="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+              </div>
+            </div>
+
+            <div id="regMensajeError" class="hidden text-xs text-red-600 font-bold bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span id="regMensajeTexto"></span>
+            </div>
+
+            <button type="submit" id="regSubmitBtn" class="w-full py-3 rounded-xl btn-orange text-sm shadow-orange flex items-center justify-center gap-2 mt-2">
+              <i class="fa-solid fa-user-plus"></i> Crear Mi Cuenta
+            </button>
+          </form>
+
+          <div class="mt-4 pt-4 border-t border-slate-100 text-center">
+            <p class="text-xs text-slate-500">¿Ya tienes cuenta?
+              <button onclick="mostrarFormularioLogin()" class="text-orange-600 font-bold hover:underline ml-1">Iniciar Sesión</button>
+            </p>
+          </div>
+        </div>
+      </section>
+
+    <!-- ========================================== -->
+    <!-- INTERFAZ 1: PORTERÍA WEB (DESKTOP & TABLET) -->
+    <!-- ========================================== -->
+    <div id="interfacePorteriaWeb" class="hidden space-y-6">
+
+      <!-- TARJETAS DE INDICADORES EN TIEMPO REAL -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Cupos Totales</p>
+            <h3 class="text-2xl font-extrabold text-slate-800 mt-1" id="statTotalCupos">10</h3>
+          </div>
+          <div class="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center text-xl">
+            <i class="fa-solid fa-square-parking"></i>
           </div>
         </div>
 
-        <!-- Rejilla de Tarjetas (Grid Dinámico) -->
-        <div id="gridCatalogo" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <!-- Las tarjetas de vehículos/cupos se cargan con JS -->
+        <div class="bg-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">En Sitio (Ocupados)</p>
+            <h3 class="text-2xl font-extrabold text-orange-600 mt-1" id="statOcupados">1</h3>
+          </div>
+          <div class="w-12 h-12 bg-orange-500 text-white rounded-xl flex items-center justify-center text-xl shadow-orange">
+            <i class="fa-solid fa-car-side"></i>
+          </div>
         </div>
-      </section>
 
+        <div class="bg-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Reservas Activas</p>
+            <h3 class="text-2xl font-extrabold text-amber-600 mt-1" id="statReservados">2</h3>
+          </div>
+          <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-xl">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Cupos Libres</p>
+            <h3 class="text-2xl font-extrabold text-emerald-600 mt-1" id="statDisponibles">2</h3>
+          </div>
+          <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- SCANNER Y VALIDADOR DIRECTO DE PASE POR PORTERÍA -->
+      <div class="bg-white p-6 rounded-2xl border border-orange-200 shadow-md">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-qrcode text-orange-500"></i> Validación Directa de Pase / Código QR
+            </h2>
+            <p class="text-xs text-slate-500">Escanee o digite el código de pase alfanumérico entregado al empleado (Ejemplo: PARK-8892 o PARK-9012)</p>
+          </div>
+        </div>
+
+        <form id="searchPassForm" class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1">
+            <span class="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400"><i class="fa-solid fa-barcode"></i></span>
+            <input type="text" id="codigoPaseInput" placeholder="Ingrese o escanee código de pase (Ej: PARK-8892)" required
+              class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-lg font-bold text-slate-800 uppercase focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition">
+          </div>
+          <button type="submit" class="btn-orange px-8 py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-orange">
+            <i class="fa-solid fa-magnifying-glass"></i> Validar Pase
+          </button>
+        </form>
+
+        <!-- PANEL DE RESPUESTA DE VALIDACIÓN -->
+        <div id="validationResultCard" class="hidden mt-4 p-4 rounded-xl border border-orange-200 bg-orange-50/50">
+          <!-- Se inyecta dinámicamente -->
+        </div>
+      </div>
+
+      <!-- CATÁLOGO GENERAL DE CUPOS Y VEHÍCULOS DE PORTERÍA -->
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-grip text-orange-500"></i> Mapa General de Cupos de Parqueo
+            </h2>
+            <p class="text-xs text-slate-500">Estado actual del parqueadero de la sede</p>
+          </div>
+
+          <!-- BOTONES FILTRO DE CATÁLOGO -->
+          <div class="flex flex-wrap gap-2">
+            <button onclick="filtrarCatalogo('TODOS')" id="filterBtnTODOS" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-orange-500 text-white shadow-sm">Todos</button>
+            <button onclick="filtrarCatalogo('RESERVADO')" id="filterBtnRESERVADO" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200">Reservados</button>
+            <button onclick="filtrarCatalogo('OCUPADO')" id="filterBtnOCUPADO" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200">En Sitio (Ocupados)</button>
+            <button onclick="filtrarCatalogo('DISPONIBLE')" id="filterBtnDISPONIBLE" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200">Disponibles</button>
+          </div>
+        </div>
+
+        <!-- REJILLA DE TARJETAS DE CUPOS -->
+        <div id="gridCatalogoPorteria" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <!-- Carga dinámicamente mediante app.js -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- INTERFAZ 2: EMPLEADO CELULAR (MOBILE VIEW) -->
+    <!-- ========================================== -->
+    <div id="interfaceEmpleadoCelular" class="hidden">
+      <div class="mobile-shell">
+        <div class="mobile-frame my-4">
+          <div class="mobile-notch"></div>
+
+          <div class="mobile-screen">
+            <header class="employee-topbar safe-top">
+              <div class="brand-badge">
+                <i class="fa-solid fa-mobile-screen-button"></i>
+              </div>
+              <div>
+                <h3>PARKGO Mobile</h3>
+                <span>Portal del empleado</span>
+              </div>
+              <button onclick="abrirModalNuevaReserva()" class="topbar-button">
+                <i class="fa-solid fa-plus"></i>
+                Reservar
+              </button>
+            </header>
+
+            <div class="mobile-summary safe-top">
+              <div class="mini-stat">
+                <span class="label">Estado</span>
+                <strong>Activo</strong>
+              </div>
+              <div class="mini-stat">
+                <span class="label">Sede</span>
+                <strong>Principal</strong>
+              </div>
+            </div>
+
+            <div id="activePassCardMobile" class="space-y-4">
+              <!-- Se inyecta dinámicamente -->
+            </div>
+
+            <div class="quick-actions">
+              <button onclick="abrirModalNuevaReserva()" class="quick-action primary">
+                <i class="fa-solid fa-calendar-plus"></i>
+                <span>Reservar</span>
+              </button>
+              <button onclick="cargarPaseEmpleado()" class="quick-action">
+                <i class="fa-solid fa-ticket"></i>
+                <span>Pase</span>
+              </button>
+              <button onclick="alert('Perfil de usuario verificado correctamente.')" class="quick-action">
+                <i class="fa-solid fa-circle-user"></i>
+                <span>Perfil</span>
+              </button>
+            </div>
+
+            <section class="history-card">
+              <div class="history-header">
+                <span>Historial de accesos</span>
+                <i class="fa-solid fa-clock-history"></i>
+              </div>
+              <div id="employeeHistoryList" class="history-list">
+                <!-- Se inyecta dinámicamente -->
+              </div>
+            </section>
+
+            <nav class="mobile-footer safe-bottom" aria-label="Menú móvil">
+              <button onclick="cargarPaseEmpleado()" class="footer-item active">
+                <i class="fa-solid fa-ticket"></i>
+                <span>Mi Pase</span>
+              </button>
+              <button onclick="abrirModalNuevaReserva()" class="footer-item">
+                <i class="fa-solid fa-calendar-plus"></i>
+                <span>Reservar</span>
+              </button>
+              <button onclick="alert('Perfil de usuario verificado correctamente.')" class="footer-item">
+                <i class="fa-solid fa-circle-user"></i>
+                <span>Perfil</span>
+              </button>
+            </nav>
+          </div>
+        </div>
+      </div>
     </div>
 
   </main>
 
+  <!-- MODAL DE NUEVA RESERVA PARA EL EMPLEADO -->
+  <div id="modalNuevaReserva" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-orange-100 relative">
+      <button onclick="cerrarModalNuevaReserva()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+        <i class="fa-solid fa-xmark text-xl"></i>
+      </button>
+
+      <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+        <i class="fa-solid fa-car text-orange-500"></i> Generar Pase de Parqueo
+      </h3>
+
+      <form id="reservaForm" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Tipo de Vehículo</label>
+            <select id="reservaTipoVehiculo" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+              <option value="CARRO">🚗 Carro</option>
+              <option value="MOTO">🏍️ Motocicleta</option>
+              <option value="BICICLETA">🚲 Bicicleta</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Placa</label>
+            <input type="text" id="reservaPlaca" required placeholder="Ej: ABC-123"
+              class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold uppercase focus:ring-2 focus:ring-orange-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Marca</label>
+            <input type="text" id="reservaMarca" required placeholder="Ej: Mazda, KTM, Ford"
+              class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Modelo</label>
+            <input type="text" id="reservaModelo" required placeholder="Ej: Corolla, Duke 390"
+              class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Color del Vehículo</label>
+          <input type="text" id="reservaColor" placeholder="Ej: Rojo, Azul metálico, Blanco perla"
+            class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Fecha</label>
+            <input type="date" id="reservaFecha" required
+              class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Hora Llegada</label>
+            <input type="time" id="reservaHora" value="08:00" required
+              class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+          </div>
+        </div>
+
+        <button type="submit" class="w-full py-3 rounded-xl btn-orange text-sm font-bold shadow-orange flex items-center justify-center gap-2 mt-2">
+          <i class="fa-solid fa-check"></i> Solicitar y Generar QR
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- SCRIPT LOGIC JAVASCRIPT -->
   <script src="app.js"></script>
 </body>
 </html>
