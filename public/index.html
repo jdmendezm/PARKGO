@@ -13,40 +13,36 @@
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
 
-  <!-- HEADER PRINCIPAL PARKGO (Naranja y Blanco) -->
-  <header class="bg-orange-brand text-white shadow-lg sticky top-0 z-40">
+  <!-- HEADER PRINCIPAL PARKGO -->
+  <header class="site-header sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
       
       <!-- LOGO E IDENTIFICADOR DE SISTEMA -->
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-orange-600 font-extrabold text-xl shadow-md">
-          P
-        </div>
-        <div>
-          <h1 class="text-xl font-extrabold tracking-tight flex items-center gap-2">
-            PARKGO <span class="text-xs bg-orange-700/60 px-2 py-0.5 rounded-full font-medium border border-orange-400/30">v2.0 Security</span>
-          </h1>
-          <p class="text-xs text-orange-100 font-medium">Control de Accesos & Reservas Institucionales</p>
-        </div>
+      <div class="site-brand">
+        <img class="site-logo" src="/assets/parkgo-logo.png" alt="ParkGo, gestión de parqueaderos">
+        <span class="site-brand-caption">Control de accesos y reservas</span>
       </div>
 
       <!-- SWITCHER DE VISTAS (PORTERÍA WEB VS EMPLEADO CELULAR) -->
-      <div id="viewSelectorGroup" class="hidden flex items-center bg-orange-950/20 p-1 rounded-xl border border-orange-400/30">
-        <button id="btnViewPorteria" onclick="switchInterface('PORTERIA')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-white text-orange-600 shadow-sm">
+      <div id="viewSelectorGroup" class="hidden flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <button id="btnViewPorteria" onclick="switchInterface('PORTERIA')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-orange-600 text-white shadow-sm">
           <i class="fa-solid fa-building-shield"></i> Portería Web
         </button>
-        <button id="btnViewEmpleado" onclick="switchInterface('EMPLEADO')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-white hover:bg-orange-700/50">
+        <button id="btnViewEmpleado" onclick="switchInterface('EMPLEADO')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-slate-600 hover:bg-white">
           <i class="fa-solid fa-mobile-screen-button"></i> Empleado Celular
+        </button>
+        <button id="btnViewAdmin" onclick="switchInterface('ADMIN')" class="hidden px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 text-slate-600 hover:bg-white">
+          <i class="fa-solid fa-gauge-high"></i> Administración
         </button>
       </div>
 
       <!-- INFORMACIÓN DE USUARIO Y LOGOUT -->
       <div id="userInfoHeader" class="hidden flex items-center gap-3">
         <div class="text-right">
-          <p id="userNameDisplay" class="text-sm font-bold leading-tight">Cargando...</p>
-          <span id="userRoleBadge" class="inline-block bg-orange-800/80 text-orange-100 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-orange-300/30">Guarda</span>
+          <p id="userNameDisplay" class="text-sm font-bold leading-tight text-slate-800">Cargando...</p>
+          <span id="userRoleBadge" class="inline-block bg-orange-50 text-orange-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-orange-200">Guarda</span>
         </div>
-        <button onclick="logout()" class="bg-white/15 hover:bg-white/25 text-white p-2 rounded-lg text-sm transition" title="Cerrar Sesión">
+        <button onclick="logout()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 p-2 rounded-lg text-sm transition" title="Cerrar Sesión">
           <i class="fa-solid fa-right-from-bracket"></i>
         </button>
       </div>
@@ -65,10 +61,8 @@
         <div class="absolute top-0 left-0 right-0 h-3 bg-orange-brand"></div>
         
         <div class="text-center mb-6">
-          <div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 text-3xl mx-auto mb-3 border border-orange-100">
-            <i class="fa-solid fa-lock"></i>
-          </div>
-          <h2 class="text-2xl font-bold text-slate-800">Iniciar Sesión PARKGO</h2>
+          <img class="login-logo" src="/assets/parkgo-logo.png" alt="ParkGo" width="2197" height="716">
+          <h2 class="text-2xl font-bold text-slate-800">Iniciar Sesión</h2>
           <p class="text-xs text-slate-500 mt-1">Ingrese sus credenciales de guarda o empleado corporativo</p>
         </div>
 
@@ -97,25 +91,8 @@
           </button>
         </form>
 
-        <!-- BOTONES DE AUTOCOMPLETADO RÁPIDO PARA DEMOSTRACIÓN -->
         <div class="mt-6 pt-6 border-t border-slate-100 text-center">
-          <p class="text-xs font-bold text-slate-400 mb-3 uppercase">Cuentas de Prueba Disponibles:</p>
-          <div class="grid grid-cols-2 gap-2">
-            <button onclick="autofillLogin('carlos.guarda@sanmateo.edu.co', 'Password123')" class="py-2 px-3 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-xl border border-orange-200 transition text-left flex items-center gap-2">
-              <i class="fa-solid fa-user-shield text-orange-500"></i>
-              <div>
-                <p class="leading-none">Guarda Web</p>
-                <span class="text-[10px] text-orange-400 font-normal">carlos.guarda@sanmateo.edu.co</span>
-              </div>
-            </button>
-            <button onclick="autofillLogin('luis.vargas@sanmateo.edu.co', 'Password123')" class="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition text-left flex items-center gap-2">
-              <i class="fa-solid fa-user-tie text-slate-500"></i>
-              <div>
-                <p class="leading-none">Empleado Celular</p>
-                <span class="text-[10px] text-slate-400 font-normal">luis.vargas@sanmateo.edu.co</span>
-              </div>
-            </button>
-          </div>
+          <p class="text-xs text-slate-500">Usa la cuenta institucional y el perfil asignados por tu organización.</p>
         </div>
           <!-- ENLACE A REGISTRO -->
           <div class="mt-4 text-center">
@@ -309,7 +286,80 @@
     </div>
 
     <!-- ========================================== -->
-    <!-- INTERFAZ 2: EMPLEADO CELULAR (MOBILE VIEW) -->
+    <!-- INTERFAZ 2: PANEL ADMINISTRATIVO WEB -->
+    <!-- ========================================== -->
+    <section id="interfaceAdmin" class="hidden">
+      <div class="admin-layout">
+        <aside class="admin-sidebar" aria-label="Navegación administrativa">
+          <div class="admin-brand">
+            <div><img class="admin-brand-logo" src="/assets/parkgo-logo.png" alt="ParkGo"><small>Administración</small></div>
+          </div>
+          <nav class="admin-nav">
+            <button class="admin-nav-item active" data-admin-page="dashboard" onclick="abrirPaginaAdmin('dashboard')"><i class="fa-solid fa-house"></i> Inicio</button>
+            <button class="admin-nav-item" data-admin-page="reservas" onclick="abrirPaginaAdmin('reservas')"><i class="fa-regular fa-calendar-check"></i> Reservas</button>
+            <button class="admin-nav-item" data-admin-page="vehiculos" onclick="abrirPaginaAdmin('vehiculos')"><i class="fa-solid fa-car"></i> Vehículos</button>
+            <button class="admin-nav-item" data-admin-page="usuarios" onclick="abrirPaginaAdmin('usuarios')"><i class="fa-solid fa-users"></i> Usuarios</button>
+            <button class="admin-nav-item" data-admin-page="reportes" onclick="abrirPaginaAdmin('reportes')"><i class="fa-regular fa-chart-bar"></i> Reportes</button>
+            <button class="admin-nav-item" data-admin-page="perfil" onclick="abrirPaginaAdmin('perfil')"><i class="fa-solid fa-gear"></i> Mi perfil</button>
+          </nav>
+          <div class="admin-sidebar-foot"><span class="admin-status-dot"></span> Sistema conectado</div>
+        </aside>
+
+        <div class="admin-content">
+          <div class="admin-page-heading">
+            <div>
+              <p class="admin-eyebrow">PANEL DE CONTROL</p>
+              <h2 id="adminPageTitle">¡Hola!</h2>
+              <p id="adminPageDescription">Resumen operativo del parqueadero.</p>
+            </div>
+            <button class="admin-icon-button" onclick="cargarPaginaAdmin()" title="Actualizar datos" aria-label="Actualizar datos"><i class="fa-solid fa-rotate"></i></button>
+          </div>
+
+          <section class="admin-panel-page" data-admin-panel="dashboard">
+            <div class="admin-stat-grid">
+              <article class="admin-stat"><span class="admin-stat-icon orange"><i class="fa-solid fa-square-parking"></i></span><div><small>Total de puestos</small><strong id="adminStatTotal">--</strong></div></article>
+              <article class="admin-stat"><span class="admin-stat-icon green"><i class="fa-solid fa-car"></i></span><div><small>Ocupados</small><strong id="adminStatOcupados">--</strong></div></article>
+              <article class="admin-stat"><span class="admin-stat-icon slate"><i class="fa-solid fa-square-parking"></i></span><div><small>Disponibles</small><strong id="adminStatDisponibles">--</strong></div></article>
+              <article class="admin-stat"><span class="admin-stat-icon orange"><i class="fa-regular fa-calendar"></i></span><div><small>Reservas hoy</small><strong id="adminStatReservas">--</strong></div></article>
+            </div>
+
+            <div class="admin-dashboard-grid">
+              <section class="admin-section-block admin-map-section">
+                <div class="admin-section-heading"><div><h3>Mapa del parqueadero</h3><p>Estado actual por puesto</p></div><div class="admin-map-legend"><span><i class="available"></i>Disponible</span><span><i class="occupied"></i>Ocupado</span><span><i class="reserved"></i>Reservado</span></div></div>
+                <div id="adminParkingMap" class="admin-parking-map" aria-live="polite"><p class="admin-loading">Cargando puestos...</p></div>
+              </section>
+              <aside class="admin-side-stack">
+                <section class="admin-section-block"><div class="admin-section-heading"><h3>Puestos disponibles</h3><button class="admin-text-button" onclick="abrirPaginaAdmin('reservas')">Ver reservas</button></div><div id="adminAvailableSpots" class="admin-available-grid"><span class="admin-muted">Cargando...</span></div></section>
+                <section class="admin-section-block"><div class="admin-section-heading"><h3>Reservas recientes</h3><button class="admin-text-button" onclick="abrirPaginaAdmin('reservas')">Ver todas</button></div><div id="adminRecentReservations" class="admin-recent-list"><span class="admin-muted">Cargando...</span></div></section>
+              </aside>
+            </div>
+          </section>
+
+          <section class="admin-panel-page hidden" data-admin-panel="reservas">
+            <section class="admin-section-block"><div class="admin-section-heading"><div><h3>Reservas</h3><p>Últimas 100 reservas del ámbito autorizado</p></div><input id="adminReservationSearch" class="admin-search" type="search" placeholder="Buscar código, placa o puesto" oninput="filtrarTablaAdmin('reservas')"></div><div id="adminReservationsTable" class="admin-table-wrap"><p class="admin-loading">Cargando reservas...</p></div></section>
+          </section>
+
+          <section class="admin-panel-page hidden" data-admin-panel="vehiculos">
+            <section class="admin-section-block"><div class="admin-section-heading"><div><h3>Vehículos registrados</h3><p>Vehículos asociados a usuarios del ámbito autorizado</p></div><input id="adminVehicleSearch" class="admin-search" type="search" placeholder="Buscar placa, usuario o marca" oninput="filtrarTablaAdmin('vehiculos')"></div><div id="adminVehiclesTable" class="admin-table-wrap"><p class="admin-loading">Cargando vehículos...</p></div></section>
+          </section>
+
+          <section class="admin-panel-page hidden" data-admin-panel="usuarios">
+            <section class="admin-section-block"><div class="admin-section-heading"><div><h3>Usuarios y perfiles</h3><p>Los permisos se validan también en el servidor</p></div><input id="adminUserSearch" class="admin-search" type="search" placeholder="Buscar nombre o correo" oninput="filtrarTablaAdmin('usuarios')"></div><div id="adminUsersTable" class="admin-table-wrap"><p class="admin-loading">Cargando usuarios...</p></div></section>
+          </section>
+
+          <section class="admin-panel-page hidden" data-admin-panel="reportes">
+            <section class="admin-section-block"><div class="admin-section-heading"><div><h3>Reporte de actividad</h3><p>Exporta las reservas disponibles para tu empresa</p></div><button class="admin-primary-button" onclick="descargarReporteReservas()"><i class="fa-solid fa-download"></i> Descargar CSV</button></div><p id="adminReportSummary" class="admin-report-summary">Cargando datos del reporte...</p><div id="adminReportsTable" class="admin-table-wrap"></div></section>
+          </section>
+
+          <section class="admin-panel-page hidden" data-admin-panel="perfil">
+            <section class="admin-section-block admin-profile-block"><span class="admin-profile-avatar"><i class="fa-solid fa-user"></i></span><div><p class="admin-eyebrow">SESIÓN ACTUAL</p><h3 id="adminProfileName">Usuario</h3><p id="adminProfileEmail" class="admin-muted"></p><span id="adminProfileRole" class="admin-role-pill"></span></div></section>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- INTERFAZ 3: EMPLEADO CELULAR (MOBILE VIEW) -->
     <!-- ========================================== -->
     <div id="interfaceEmpleadoCelular" class="hidden">
       <div class="mobile-shell">
@@ -319,10 +369,9 @@
           <div class="mobile-screen">
             <header class="employee-topbar safe-top">
               <div class="brand-badge">
-                <i class="fa-solid fa-mobile-screen-button"></i>
+                <img src="/assets/parkgo-logo.png" alt="ParkGo">
               </div>
               <div>
-                <h3>PARKGO Mobile</h3>
                 <span>Portal del empleado</span>
               </div>
               <button onclick="abrirModalNuevaReserva()" class="topbar-button">
@@ -394,7 +443,7 @@
 
   <!-- MODAL DE NUEVA RESERVA PARA EL EMPLEADO -->
   <div id="modalNuevaReserva" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-orange-100 relative">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-orange-100 relative booking-modal">
       <button onclick="cerrarModalNuevaReserva()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
         <i class="fa-solid fa-xmark text-xl"></i>
       </button>
@@ -403,14 +452,21 @@
         <i class="fa-solid fa-car text-orange-500"></i> Generar Pase de Parqueo
       </h3>
 
+      <div id="reservationSuccessPanel" class="hidden reservation-success">
+        <span class="reservation-success-icon"><i class="fa-solid fa-check"></i></span>
+        <h4>¡Puesto reservado!</h4>
+        <p id="reservationSuccessSpot"></p>
+        <p id="reservationSuccessCode" class="reservation-success-code"></p>
+        <button type="button" class="btn-orange w-full py-3 rounded-xl text-sm font-bold" onclick="cerrarModalNuevaReserva(); cargarPaseEmpleado(); cargarHistorialEmpleado();">Ver mi reserva</button>
+      </div>
+
       <form id="reservaForm" class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Tipo de Vehículo</label>
-            <select id="reservaTipoVehiculo" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
+            <select id="reservaTipoVehiculo" onchange="cargarCuposDisponibles()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500">
               <option value="CARRO">🚗 Carro</option>
               <option value="MOTO">🏍️ Motocicleta</option>
-              <option value="BICICLETA">🚲 Bicicleta</option>
             </select>
           </div>
           <div>
@@ -419,6 +475,12 @@
               class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold uppercase focus:ring-2 focus:ring-orange-500">
           </div>
         </div>
+
+        <section class="booking-picker" aria-labelledby="bookingPickerTitle">
+          <div class="booking-picker-heading"><div><h4 id="bookingPickerTitle">Selecciona un puesto</h4><p>Disponibilidad de tu sede</p></div><span id="availableSpaceCount" class="booking-space-count">Cargando</span></div>
+          <div id="availableCuposGrid" class="booking-space-grid" aria-live="polite"><span class="admin-loading">Consultando puestos...</span></div>
+          <input type="hidden" id="reservaIdCupo">
+        </section>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -452,7 +514,7 @@
           </div>
         </div>
 
-        <button type="submit" class="w-full py-3 rounded-xl btn-orange text-sm font-bold shadow-orange flex items-center justify-center gap-2 mt-2">
+        <button id="reservaSubmitBtn" type="submit" disabled class="w-full py-3 rounded-xl btn-orange text-sm font-bold shadow-orange flex items-center justify-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed">
           <i class="fa-solid fa-check"></i> Solicitar y Generar QR
         </button>
       </form>

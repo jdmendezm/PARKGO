@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const getJwtSecret = require('../config/jwtSecret');
 
 class Usuario {
   constructor(data) {
@@ -42,10 +43,7 @@ class Usuario {
    * Genera el token JWT firmado con expiración segura de 8 horas.
    */
   generarJWT() {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('CONFIG_ERROR: La clave secreta JWT_SECRET no está definida en las variables de entorno.');
-    }
+    const secret = getJwtSecret();
 
     const payload = {
       id_usuario: this.id_usuario,
@@ -57,7 +55,7 @@ class Usuario {
       correo: this.correo_corporativo
     };
 
-    return jwt.sign(payload, secret, { expiresIn: '8h' });
+    return jwt.sign(payload, secret, { algorithm: 'HS256', expiresIn: '8h' });
   }
 
   /**

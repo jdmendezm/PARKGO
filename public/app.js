@@ -6,6 +6,8 @@ let currentUser = null;
 let currentInterface = 'PORTERIA'; // 'PORTERIA' o 'EMPLEADO'
 let catalogoCache = [];
 let filtroActual = 'TODOS';
+let currentAdminPage = 'dashboard';
+const adminCache = { cupos: [], reservas: [], vehiculos: [], usuarios: [] };
 
 function safeGetStorage(key) {
   try {
@@ -68,8 +70,13 @@ function normalizeRoleLabel(rol) {
 }
 
 function resolveDefaultInterfaceForUser(user) {
-  if (!user || !user.rol) return 'PORTERIA';
-  return user.rol === 'EMPLEADO' || user.rol === 'EMPLEADO_CONDUCTOR' ? 'EMPLEADO' : 'PORTERIA';
+  const role = String(user?.rol || '').toUpperCase();
+  if (['ADMIN', 'ADMIN_EMPRESA', 'SUPERADMIN'].includes(role)) return 'ADMIN';
+  return role === 'GUARDA' ? 'PORTERIA' : 'EMPLEADO';
+}
+
+function isAdministrator(user = currentUser) {
+  return ['ADMIN', 'ADMIN_EMPRESA', 'SUPERADMIN'].includes(String(user?.rol || '').toUpperCase());
 }
 
 // Autocompletado rápido de formulario de login
@@ -149,7 +156,10 @@ async function verificarSesion() {
 function inicializarDashboard() {
   document.getElementById('loginSection').classList.add('hidden');
   document.getElementById('userInfoHeader').classList.remove('hidden');
-  document.getElementById('viewSelectorGroup').classList.remove('hidden');
+  const selector = document.getElementById('viewSelectorGroup');
+  const adminButton = document.getElementById('btnViewAdmin');
+  selector.classList.toggle('hidden', !isAdministrator());
+  adminButton.classList.toggle('hidden', !isAdministrator());
 
   const userName = currentUser.nombre_completo || `${currentUser.nombres || ''} ${currentUser.apellidos || ''}`.trim() || 'Usuario PARKGO';
   document.getElementById('userNameDisplay').innerText = userName;
@@ -162,39 +172,266 @@ function inicializarDashboard() {
 function setViewButtonState(activeTab) {
   const btnPorteria = document.getElementById('btnViewPorteria');
   const btnEmpleado = document.getElementById('btnViewEmpleado');
+  const btnAdmin = document.getElementById('btnViewAdmin');
 
   if (!btnPorteria || !btnEmpleado) return;
 
   const basePorteria = 'px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2';
   const baseEmpleado = 'px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2';
+  const baseAdmin = 'px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2';
 
-  if (activeTab === 'PORTERIA') {
-    btnPorteria.className = `${basePorteria} bg-white text-orange-600 shadow-sm`;
-    btnEmpleado.className = `${baseEmpleado} text-white hover:bg-orange-700/50`;
-  } else {
-    btnEmpleado.className = `${baseEmpleado} bg-white text-orange-600 shadow-sm`;
-    btnPorteria.className = `${basePorteria} text-white hover:bg-orange-700/50`;
-  }
+  btnPorteria.className = `${basePorteria} ${activeTab === 'PORTERIA' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`;
+  btnEmpleado.className = `${baseEmpleado} ${activeTab === 'EMPLEADO' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`;
+  if (btnAdmin) btnAdmin.className = `${baseAdmin} ${activeTab === 'ADMIN' ? 'bg-orange-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`;
 }
 
 // Conmutar entre Portería Web y Empleado Celular
 function switchInterface(targetInterface) {
+  if (!isAdministrator()) {
+    targetInterface = String(currentUser?.rol || '').toUpperCase() === 'GUARDA' ? 'PORTERIA' : 'EMPLEADO';
+  }
+
   currentInterface = targetInterface;
   const viewPorteria = document.getElementById('interfacePorteriaWeb');
   const viewEmpleado = document.getElementById('interfaceEmpleadoCelular');
+  const adminView = document.getElementById('interfaceAdmin');
 
   setViewButtonState(targetInterface);
+  viewPorteria.classList.toggle('hidden', targetInterface !== 'PORTERIA');
+  viewEmpleado.classList.toggle('hidden', targetInterface !== 'EMPLEADO');
+  adminView.classList.toggle('hidden', targetInterface !== 'ADMIN');
 
   if (targetInterface === 'PORTERIA') {
-    viewPorteria.classList.remove('hidden');
-    viewEmpleado.classList.add('hidden');
     cargarCatalogoPorteria();
-  } else {
-    viewEmpleado.classList.remove('hidden');
-    viewPorteria.classList.add('hidden');
+  } else if (targetInterface === 'EMPLEADO') {
     cargarPaseEmpleado();
     cargarHistorialEmpleado();
+  } else if (targetInterface === 'ADMIN') {
+    abrirPaginaAdmin(currentAdminPage);
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
+}
+
+async function adminRequest(path, options = {}) {
+  const response = await fetch(`${API_URL}/admin/${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${currentToken}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...options.headers
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    logout();
+    throw new Error('Tu sesión expiró. Inicia sesión nuevamente.');
+  }
+  if (!response.ok) throw new Error(data.message || 'No se pudo completar la operación.');
+  return data;
+}
+
+const adminPageDetails = {
+  dashboard: ['Resumen operativo', 'Estado actual del parqueadero y actividad reciente.'],
+  reservas: ['Reservas', 'Consulta las reservas registradas dentro de tu ámbito.'],
+  vehiculos: ['Vehículos', 'Vehículos asociados a usuarios de tu empresa.'],
+  usuarios: ['Usuarios y perfiles', 'Administra cuentas y permisos con mínimo privilegio.'],
+  reportes: ['Reportes', 'Resumen exportable de reservas y ocupación.'],
+  perfil: ['Mi perfil', 'Información del usuario y rol de la sesión actual.']
+};
+
+function abrirPaginaAdmin(page) {
+  if (!isAdministrator() || !adminPageDetails[page]) return;
+  currentAdminPage = page;
+  document.querySelectorAll('[data-admin-panel]').forEach(panel => {
+    panel.classList.toggle('hidden', panel.dataset.adminPanel !== page);
+  });
+  document.querySelectorAll('[data-admin-page]').forEach(button => {
+    button.classList.toggle('active', button.dataset.adminPage === page);
+  });
+  document.getElementById('adminPageTitle').textContent = adminPageDetails[page][0];
+  document.getElementById('adminPageDescription').textContent = adminPageDetails[page][1];
+  cargarPaginaAdmin();
+}
+
+async function cargarPaginaAdmin() {
+  if (!isAdministrator()) return;
+  try {
+    if (currentAdminPage === 'dashboard') {
+      const [summary, spaces, reservations] = await Promise.all([
+        adminRequest('resumen'), adminRequest('cupos'), adminRequest('reservas')
+      ]);
+      adminCache.cupos = spaces.cupos || [];
+      adminCache.reservas = reservations.reservas || [];
+      renderAdminDashboard(summary.resumen || {});
+    } else if (currentAdminPage === 'reservas') {
+      const data = await adminRequest('reservas');
+      adminCache.reservas = data.reservas || [];
+      renderAdminReservations();
+    } else if (currentAdminPage === 'vehiculos') {
+      const data = await adminRequest('vehiculos');
+      adminCache.vehiculos = data.vehiculos || [];
+      renderAdminVehicles();
+    } else if (currentAdminPage === 'usuarios') {
+      const data = await adminRequest('usuarios');
+      adminCache.usuarios = data.usuarios || [];
+      renderAdminUsers();
+    } else if (currentAdminPage === 'reportes') {
+      const [summary, reservations] = await Promise.all([
+        adminRequest('resumen'), adminRequest('reservas')
+      ]);
+      adminCache.reservas = reservations.reservas || [];
+      renderAdminReports(summary.resumen || {});
+    } else if (currentAdminPage === 'perfil') {
+      renderAdminProfile();
+    }
+  } catch (error) {
+    const currentPanel = document.querySelector(`[data-admin-panel="${currentAdminPage}"]`);
+    const message = document.createElement('p');
+    message.className = 'admin-error';
+    message.textContent = error.message;
+    currentPanel?.replaceChildren(message);
+  }
+}
+
+function renderAdminDashboard(summary) {
+  document.getElementById('adminStatTotal').textContent = summary.totalCupos ?? 0;
+  document.getElementById('adminStatOcupados').textContent = summary.ocupados ?? 0;
+  document.getElementById('adminStatDisponibles').textContent = summary.disponibles ?? 0;
+  document.getElementById('adminStatReservas').textContent = summary.reservasHoy ?? 0;
+
+  const statusClass = { OCUPADO: 'occupied', RESERVADO: 'reserved', LIBRE: 'available', DISPONIBLE: 'available' };
+  const statusLabel = { OCUPADO: 'Ocupado', RESERVADO: 'Reservado', LIBRE: 'Disponible', DISPONIBLE: 'Disponible' };
+  const map = document.getElementById('adminParkingMap');
+  map.innerHTML = adminCache.cupos.map(space => {
+    const status = statusClass[space.estado_disponibilidad] || 'available';
+    return `<article class="admin-parking-slot ${status}" title="${escapeHtml(statusLabel[space.estado_disponibilidad] || 'Disponible')}">
+      <strong>${escapeHtml(space.codigo_espacio)}</strong><small>${escapeHtml(space.placa || space.tipo_cupo || '')}</small>
+    </article>`;
+  }).join('') || '<p class="admin-muted">No hay puestos configurados.</p>';
+
+  const available = adminCache.cupos.filter(space => ['LIBRE', 'DISPONIBLE'].includes(space.estado_disponibilidad));
+  document.getElementById('adminAvailableSpots').innerHTML = available.slice(0, 8).map(space =>
+    `<span class="admin-available-spot">${escapeHtml(space.codigo_espacio)}</span>`
+  ).join('') || '<span class="admin-muted">No hay puestos disponibles.</span>';
+
+  document.getElementById('adminRecentReservations').innerHTML = adminCache.reservas.slice(0, 4).map(reservation =>
+    `<article class="admin-recent-item"><span class="admin-recent-icon"><i class="fa-solid fa-car"></i></span><div><strong>${escapeHtml(reservation.placa || reservation.codigo)}</strong><small>${escapeHtml(reservation.codigo)} · Puesto ${escapeHtml(reservation.cupo)}</small></div><span class="admin-reservation-state">${escapeHtml(reservation.estado_reserva)}</span></article>`
+  ).join('') || '<p class="admin-muted">No hay reservas registradas.</p>';
+}
+
+function renderAdminReservations() {
+  const rows = adminCache.reservas.map(item => `<tr data-admin-row="${escapeHtml(`${item.codigo} ${item.placa} ${item.cupo}`.toLowerCase())}">
+    <td><strong>${escapeHtml(item.codigo)}</strong></td><td>${escapeHtml(`${item.nombres || ''} ${item.apellidos || ''}`.trim())}</td>
+    <td>${escapeHtml(item.placa)}</td><td>${escapeHtml(item.cupo)}</td><td>${escapeHtml(String(item.fecha_reserva || '').slice(0, 10))}</td>
+    <td><span class="admin-table-state">${escapeHtml(item.estado_reserva)}</span></td></tr>`).join('');
+  document.getElementById('adminReservationsTable').innerHTML = adminTable(['Código', 'Usuario', 'Placa', 'Puesto', 'Fecha', 'Estado'], rows);
+}
+
+function renderAdminVehicles() {
+  const rows = adminCache.vehiculos.map(vehicle => `<tr data-admin-row="${escapeHtml(`${vehicle.placa} ${vehicle.nombres} ${vehicle.apellidos} ${vehicle.marca}`.toLowerCase())}">
+    <td><strong>${escapeHtml(vehicle.placa)}</strong></td><td>${escapeHtml(vehicle.tipo_vehiculo)}</td>
+    <td>${escapeHtml(`${vehicle.marca || ''} ${vehicle.modelo || ''}`.trim())}</td><td>${escapeHtml(vehicle.color)}</td>
+    <td>${escapeHtml(`${vehicle.nombres} ${vehicle.apellidos}`)}</td></tr>`).join('');
+  document.getElementById('adminVehiclesTable').innerHTML = adminTable(['Placa', 'Tipo', 'Vehículo', 'Color', 'Usuario'], rows);
+}
+
+function renderAdminUsers() {
+  const canManageAdmin = String(currentUser?.rol || '').toUpperCase() === 'SUPERADMIN';
+  const roleOptions = canManageAdmin
+    ? [['EMPLEADO_CONDUCTOR', 'Empleado'], ['GUARDA', 'Guarda'], ['ADMIN_EMPRESA', 'Administrador'], ['SUPERADMIN', 'Superadministrador']]
+    : [['EMPLEADO_CONDUCTOR', 'Empleado'], ['GUARDA', 'Guarda']];
+  const ownId = Number(currentUser?.id_usuario);
+  const rows = adminCache.usuarios.map(user => {
+    const roles = roleOptions.map(([value, label]) => `<option value="${value}" ${user.rol_sistema === value ? 'selected' : ''}>${label}</option>`).join('');
+    const active = Boolean(user.estado_usuario);
+    const self = Number(user.id_usuario) === ownId;
+    return `<tr data-admin-row="${escapeHtml(`${user.nombres} ${user.apellidos} ${user.correo_corporativo}`.toLowerCase())}">
+      <td><strong>${escapeHtml(`${user.nombres} ${user.apellidos}`)}</strong><small>${escapeHtml(user.correo_corporativo)}</small></td>
+      <td><select class="admin-role-select" aria-label="Rol de ${escapeHtml(user.nombres)}" data-previous="${escapeHtml(user.rol_sistema)}" ${self ? 'disabled' : ''} onchange="actualizarRolAdmin(${Number(user.id_usuario)}, this)">${roles}</select></td>
+      <td><span class="admin-user-status ${active ? 'active' : 'inactive'}">${active ? 'Activo' : 'Inactivo'}</span></td>
+      <td><button class="admin-user-action" ${self ? 'disabled' : ''} onclick="actualizarEstadoAdmin(${Number(user.id_usuario)}, ${!active})">${self ? 'Tu cuenta' : active ? 'Desactivar' : 'Activar'}</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('adminUsersTable').innerHTML = adminTable(['Usuario', 'Perfil', 'Estado', 'Acción'], rows);
+}
+
+function renderAdminReports(summary) {
+  document.getElementById('adminReportSummary').textContent =
+    `${summary.totalCupos ?? 0} puestos · ${summary.ocupados ?? 0} ocupados · ${summary.disponibles ?? 0} disponibles · ${adminCache.reservas.length} reservas consultadas`;
+  const rows = adminCache.reservas.slice(0, 12).map(item => `<tr>
+    <td>${escapeHtml(item.codigo)}</td><td>${escapeHtml(item.placa)}</td><td>${escapeHtml(item.cupo)}</td>
+    <td>${escapeHtml(String(item.fecha_reserva || '').slice(0, 10))}</td><td>${escapeHtml(item.estado_reserva)}</td></tr>`).join('');
+  document.getElementById('adminReportsTable').innerHTML = adminTable(['Código', 'Placa', 'Puesto', 'Fecha', 'Estado'], rows);
+}
+
+function renderAdminProfile() {
+  document.getElementById('adminProfileName').textContent = currentUser?.nombre_completo || `${currentUser?.nombres || ''} ${currentUser?.apellidos || ''}`.trim();
+  document.getElementById('adminProfileEmail').textContent = currentUser?.correo || '';
+  document.getElementById('adminProfileRole').textContent = currentUser?.rol || 'ADMIN';
+}
+
+function adminTable(headers, rows) {
+  if (!rows) return '<p class="admin-muted">No hay registros disponibles.</p>';
+  if (!rows.trim()) return '<p class="admin-muted">No hay registros disponibles.</p>';
+  return `<table class="admin-table"><thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function filtrarTablaAdmin(type) {
+  const config = {
+    reservas: { input: 'adminReservationSearch', table: 'adminReservationsTable' },
+    vehiculos: { input: 'adminVehicleSearch', table: 'adminVehiclesTable' },
+    usuarios: { input: 'adminUserSearch', table: 'adminUsersTable' }
+  }[type];
+  if (!config) return;
+  const input = document.getElementById(config.input);
+  const query = input.value.trim().toLowerCase();
+  document.querySelectorAll(`#${config.table} [data-admin-row]`).forEach(row => {
+    row.classList.toggle('hidden', !row.dataset.adminRow.includes(query));
+  });
+}
+
+async function actualizarRolAdmin(id, select) {
+  const previous = select.dataset.previous;
+  try {
+    await adminRequest(`usuarios/${id}/rol`, { method: 'PATCH', body: JSON.stringify({ rol_sistema: select.value }) });
+    select.dataset.previous = select.value;
+    await cargarPaginaAdmin();
+  } catch (error) {
+    select.value = previous;
+    alert(error.message);
+  }
+}
+
+async function actualizarEstadoAdmin(id, estado) {
+  const action = estado ? 'activar' : 'desactivar';
+  if (!confirm(`¿Confirmas ${action} esta cuenta?`)) return;
+  try {
+    await adminRequest(`usuarios/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado_usuario: estado }) });
+    await cargarPaginaAdmin();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function descargarReporteReservas() {
+  if (!isAdministrator()) return;
+  const columns = ['codigo', 'nombres', 'apellidos', 'placa', 'cupo', 'fecha_reserva', 'estado_reserva'];
+  const csv = [columns.join(','), ...adminCache.reservas.map(item => columns.map(column => {
+    let value = String(item[column] ?? '');
+    if (/^\s*[=+\-@]/.test(value)) value = `'${value}`;
+    value = value.replace(/"/g, '""');
+    return `"${value}"`;
+  }).join(','))].join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  link.download = 'parkgo-reservas.csv';
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 // Logout
@@ -221,6 +458,9 @@ function logout() {
 
   const empleadoView = document.getElementById('interfaceEmpleadoCelular');
   if (empleadoView) empleadoView.classList.add('hidden');
+
+  const adminView = document.getElementById('interfaceAdmin');
+  if (adminView) adminView.classList.add('hidden');
 }
 
 function mostrarLogin() {
@@ -561,40 +801,109 @@ async function cargarHistorialEmpleado() {
 // Modal de Nueva Reserva
 function abrirModalNuevaReserva() {
   document.getElementById('modalNuevaReserva').classList.remove('hidden');
+  document.getElementById('reservationSuccessPanel').classList.add('hidden');
+  document.getElementById('reservaForm').classList.remove('hidden');
+  document.getElementById('reservaFecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('reservaIdCupo').value = '';
+  document.getElementById('reservaSubmitBtn').disabled = true;
+  cargarCuposDisponibles();
 }
 
 function cerrarModalNuevaReserva() {
   document.getElementById('modalNuevaReserva').classList.add('hidden');
 }
 
+async function cargarCuposDisponibles() {
+  const grid = document.getElementById('availableCuposGrid');
+  const count = document.getElementById('availableSpaceCount');
+  const selected = document.getElementById('reservaIdCupo');
+  const submit = document.getElementById('reservaSubmitBtn');
+  selected.value = '';
+  submit.disabled = true;
+  grid.innerHTML = '<span class="admin-loading">Consultando puestos...</span>';
+  count.textContent = 'Cargando';
+
+  try {
+    const tipoVehiculo = document.getElementById('reservaTipoVehiculo').value;
+    const query = new URLSearchParams({ tipoVehiculo });
+    const res = await fetch(`${API_URL}/mobile/empleado/cupos?${query}`, {
+      headers: { Authorization: `Bearer ${currentToken}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'No se pudo consultar la disponibilidad.');
+
+    const cupos = data.cupos || [];
+    count.textContent = `${cupos.length} libres`;
+    if (!cupos.length) {
+      grid.innerHTML = '<span class="booking-no-spaces">No hay puestos libres para este vehículo.</span>';
+      return;
+    }
+
+    grid.innerHTML = cupos.map(cupo => `
+      <button type="button" class="booking-space" data-cupo-id="${Number(cupo.id_cupo)}" onclick="seleccionarCupo(${Number(cupo.id_cupo)}, '${escapeHtml(cupo.codigo_espacio)}')">
+        <i class="fa-solid fa-square-parking"></i><strong>${escapeHtml(cupo.codigo_espacio)}</strong><small>${escapeHtml(cupo.piso_nivel || '')}</small>
+      </button>`).join('');
+  } catch (error) {
+    count.textContent = 'Error';
+    grid.innerHTML = `<span class="booking-no-spaces">${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function seleccionarCupo(idCupo, codigo) {
+  document.getElementById('reservaIdCupo').value = String(idCupo);
+  document.querySelectorAll('.booking-space').forEach(button => {
+    button.classList.toggle('selected', Number(button.dataset.cupoId) === Number(idCupo));
+  });
+  document.getElementById('reservaSubmitBtn').disabled = false;
+  document.getElementById('bookingPickerTitle').textContent = `Puesto ${codigo} seleccionado`;
+}
+
 document.getElementById('reservaForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const tipoVehiculo = document.getElementById('reservaTipoVehiculo').value;
   const placa = document.getElementById('reservaPlaca').value.trim();
+  const marca = document.getElementById('reservaMarca').value.trim();
+  const modelo = document.getElementById('reservaModelo').value.trim();
+  const color = document.getElementById('reservaColor').value.trim();
   const fecha = document.getElementById('reservaFecha').value;
   const horaEntrada = document.getElementById('reservaHora').value;
+  const idCupo = Number(document.getElementById('reservaIdCupo').value);
+  const submit = document.getElementById('reservaSubmitBtn');
+
+  if (!idCupo) {
+    document.getElementById('bookingPickerTitle').textContent = 'Selecciona un puesto disponible';
+    return;
+  }
 
   try {
+    submit.disabled = true;
+    submit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Reservando...';
     const res = await fetch(`${API_URL}/mobile/empleado/reserva`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ tipoVehiculo, placa, fecha, horaEntrada })
+      body: JSON.stringify({ tipoVehiculo, placa, marca, modelo, color, fecha, horaEntrada, idCupo })
     });
     const data = await res.json();
 
     if (res.ok) {
-      alert(`🎉 ${data.message || 'Pase generado exitosamente'}\nCódigo: ${data.codigo}\nCupo Asignado: ${data.cupo}`);
-      cerrarModalNuevaReserva();
+      document.getElementById('reservaForm').classList.add('hidden');
+      document.getElementById('reservationSuccessSpot').textContent = `Puesto ${data.cupo} · ${placa}`;
+      document.getElementById('reservationSuccessCode').textContent = `Código ${data.codigo}`;
+      document.getElementById('reservationSuccessPanel').classList.remove('hidden');
       cargarPaseEmpleado();
       cargarHistorialEmpleado();
     } else {
       alert(`❌ Error: ${data.message}`);
+      await cargarCuposDisponibles();
     }
   } catch (err) {
     alert('Error al generar la reserva.');
+  } finally {
+    submit.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar reserva';
+    submit.disabled = !document.getElementById('reservaIdCupo').value;
   }
 });
 

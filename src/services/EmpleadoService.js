@@ -2,6 +2,24 @@ const db = require('../config/db');
 const Reserva = require('../models/Reserva');
 
 class EmpleadoService {
+  static async obtenerCuposDisponibles(idUsuario, tipoVehiculo) {
+    const userId = Number(idUsuario);
+    const tipoNormalizado = String(tipoVehiculo || 'CARRO').toUpperCase();
+    const tipoFinal = tipoNormalizado === 'CAMIONETA' ? 'CARRO' : tipoNormalizado;
+    const result = await db.query(
+      `SELECT c.id_cupo, c.codigo_espacio, c.tipo_cupo, c.piso_nivel
+       FROM cupo_parqueo c
+       JOIN usuario u ON u.id_sede = c.id_sede
+       WHERE u.id_usuario = $1
+         AND c.estado_disponibilidad = 'LIBRE'
+         AND c.tipo_cupo = $2
+       ORDER BY c.codigo_espacio`,
+      [userId, tipoFinal]
+    );
+
+    return result.rows || [];
+  }
+
   static async obtenerPaseActivo(idUsuario) {
     const userId = idUsuario || 2;
     const result = await db.query(
@@ -32,7 +50,7 @@ class EmpleadoService {
     return null;
   }
 
-  static async crearReserva(idUsuario, { tipoVehiculo, placa, fecha, horaEntrada } = {}) {
+  static async crearReserva(idUsuario, { tipoVehiculo, placa, fecha, horaEntrada, idCupo, marca, modelo, color } = {}) {
     const userId = idUsuario || 2;
     const tipoVehiculoNormalizado = String(tipoVehiculo || 'CARRO').toUpperCase();
     const tipoVehiculoFinal = tipoVehiculoNormalizado === 'CAMIONETA' ? 'CARRO' : tipoVehiculoNormalizado;
@@ -40,6 +58,16 @@ class EmpleadoService {
     const horaFin = '20:00';
     const horaInicio = horaEntrada || '08:00';
     const fechaReserva = fecha || new Date().toISOString().split('T')[0];
+    const marcaVehiculo = String(marca || 'Sin Especificar').trim();
+    const modeloVehiculo = String(modelo || 'Sin Especificar').trim();
+    const colorVehiculo = String(color || 'Sin Especificar').trim();
+    const cupoSeleccionado = idCupo === undefined || idCupo === null || idCupo === '' ? null : Number(idCupo);
+
+    if (cupoSeleccionado !== null && (!Number.isInteger(cupoSeleccionado) || cupoSeleccionado <= 0)) {
+      const err = new Error('El cupo seleccionado no es válido.');
+      err.status = 400;
+      throw err;
+    }
 
     const reservaExistente = await db.query(
       `SELECT id_reserva FROM reserva
@@ -67,10 +95,11 @@ class EmpleadoService {
           `SELECT id_cupo, codigo_espacio
            FROM cupo_parqueo
            WHERE estado_disponibilidad = 'LIBRE' AND tipo_cupo = $1
+             AND ($2::INTEGER IS NULL OR id_cupo = $2)
            ORDER BY codigo_espacio
            LIMIT 1
            FOR UPDATE SKIP LOCKED`,
-          [tipoVehiculoFinal]
+           [tipoVehiculoFinal, cupoSeleccionado]
         );
 
         if (!cupoResult.rows || cupoResult.rows.length === 0) {
@@ -88,12 +117,18 @@ class EmpleadoService {
         let vehiculoId;
         if (vehExiste.rows && vehExiste.rows.length > 0) {
           vehiculoId = vehExiste.rows[0].id_vehiculo;
+          await query(
+            `UPDATE vehiculo
+             SET tipo_vehiculo = $2, marca = $3, modelo = $4, color = $5
+             WHERE id_vehiculo = $1 AND id_usuario = $6`,
+            [vehiculoId, tipoVehiculoFinal, marcaVehiculo, modeloVehiculo, colorVehiculo, userId]
+          );
         } else {
           const nuevoVeh = await query(
             `INSERT INTO vehiculo (id_usuario, placa, tipo_vehiculo, marca, modelo, color)
-             VALUES ($1, $2, $3, 'Sin Especificar', 'Sin Especificar', 'Sin Especificar')
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id_vehiculo`,
-            [userId, placa || 'SIN-PLACA', tipoVehiculoFinal]
+            [userId, placa || 'SIN-PLACA', tipoVehiculoFinal, marcaVehiculo, modeloVehiculo, colorVehiculo]
           );
           vehiculoId = nuevoVeh.rows[0].id_vehiculo;
         }

@@ -1,5 +1,16 @@
 const EmpleadoService = require('../services/EmpleadoService');
 
+const obtenerCuposDisponibles = async (req, res) => {
+  try {
+    const idUsuario = req.usuario ? req.usuario.id_usuario : null;
+    const cupos = await EmpleadoService.obtenerCuposDisponibles(idUsuario, req.query.tipoVehiculo);
+    return res.json({ ok: true, cupos });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({ ok: false, message: error.message || 'Error al consultar cupos disponibles' });
+  }
+};
+
 const obtenerPaseActivo = async (req, res) => {
   try {
     const idUsuario = req.usuario ? req.usuario.id_usuario : null;
@@ -42,4 +53,4 @@ const obtenerHistorial = async (req, res) => {
   }
 };
 
-module.exports = { obtenerPaseActivo, crearReserva, obtenerHistorial };
+module.exports = { obtenerCuposDisponibles, obtenerPaseActivo, crearReserva, obtenerHistorial };

@@ -1,13 +1,49 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const { rateLimit } = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean)
+);
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+
+if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0) {
+  throw new Error('TRUST_PROXY_HOPS debe ser un entero mayor o igual a cero.');
+}
+app.set('trust proxy', trustProxyHops);
+
+const apiRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { ok: false, message: 'Demasiadas solicitudes. Inténtalo más tarde.' }
+});
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { ok: false, message: 'Demasiados intentos de autenticación. Inténtalo más tarde.' }
+});
+const registrationRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { ok: false, message: 'Se alcanzó el límite de registros. Inténtalo más tarde.' }
+});
 
 // Middlewares de Seguridad HTTP & CORS
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -23,15 +59,24 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
+app.use('/api', apiRateLimit);
+app.use('/api/v1/auth/login', authRateLimit);
+app.use('/api/v1/auth/registro', registrationRateLimit);
+
 // Middlewares para procesar JSON y datos de formularios
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '32kb' }));
+app.use(express.urlencoded({ extended: true, limit: '32kb' }));
 
 // Servir archivos estáticos desde la carpeta "public" (Frontend en Naranja y Blanco)
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Rutas de la API REST PARKGO
 app.use('/api/v1/auth', require('./routes/authRoutes'));
+app.use('/api/v1/admin', require('./routes/adminRoutes'));
 app.use('/api/v1/web/accesos', require('./routes/accesoRoutes'));
 app.use('/api/v1/mobile/empleado', require('./routes/empleadoRoutes'));
 

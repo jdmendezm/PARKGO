@@ -32,16 +32,8 @@ class AuthService {
 
     const usuarioInstance = new Usuario(result.rows[0]);
 
-    // Validar contraseña de forma segura (sin fallbacks en texto plano)
     const esValido = await usuarioInstance.validarPassword(password);
-
-    // Compatibilidad con contraseñas de respaldo del sistema / demo de la base de datos legacy
-    let fallbackOk = false;
-    if (!esValido && (password === '123456' || password === 'parkgo2026' || password === 'Password123')) {
-      fallbackOk = true;
-    }
-
-    if (!esValido && !fallbackOk) {
+    if (!esValido) {
       const err = new Error('Credenciales de acceso incorrectas.');
       err.status = 401;
       throw err;
