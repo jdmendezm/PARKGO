@@ -34,11 +34,16 @@ const verificarToken = async (req, res, next) => {
   let usuarioActual;
   try {
     const result = await db.query(
-      `SELECT id_usuario, id_empresa, id_sede, nombres, apellidos,
-              correo_corporativo, rol_sistema, estado_usuario
-       FROM usuario
-       WHERE id_usuario = $1
-       LIMIT 1`,
+            `SELECT u.id_usuario, u.id_empresa, u.id_sede, u.id_area,
+              u.nombres, u.apellidos, u.cargo, u.correo_corporativo,
+              u.rol_sistema, u.estado_usuario,
+              e.razon_social, s.nombre_sede, a.nombre_area
+             FROM usuario u
+             LEFT JOIN empresa e ON e.id_empresa = u.id_empresa
+             LEFT JOIN sede s ON s.id_sede = u.id_sede
+             LEFT JOIN area a ON a.id_area = u.id_area
+             WHERE u.id_usuario = $1
+             LIMIT 1`,
       [decoded.id_usuario]
     );
     usuarioActual = result.rows?.[0];
@@ -58,7 +63,11 @@ const verificarToken = async (req, res, next) => {
     id_sede: usuarioActual.id_sede,
     nombres: usuarioActual.nombres,
     apellidos: usuarioActual.apellidos,
+    cargo: usuarioActual.cargo,
     correo: usuarioActual.correo_corporativo,
+    razon_social: usuarioActual.razon_social,
+    nombre_sede: usuarioActual.nombre_sede,
+    nombre_area: usuarioActual.nombre_area,
     rol: usuarioActual.rol_sistema
   };
   next();

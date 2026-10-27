@@ -2,6 +2,18 @@ const db = require('../config/db');
 const Reserva = require('../models/Reserva');
 
 class EmpleadoService {
+  static async obtenerVehiculos(idUsuario) {
+    const result = await db.query(
+      `SELECT id_vehiculo, placa, tipo_vehiculo, marca, modelo, color
+       FROM vehiculo
+       WHERE id_usuario = $1
+       ORDER BY id_vehiculo DESC`,
+      [Number(idUsuario)]
+    );
+
+    return result.rows || [];
+  }
+
   static async obtenerCuposDisponibles(idUsuario, tipoVehiculo) {
     const userId = Number(idUsuario);
     const tipoNormalizado = String(tipoVehiculo || 'CARRO').toUpperCase();

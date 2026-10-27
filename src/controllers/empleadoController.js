@@ -1,5 +1,15 @@
 const EmpleadoService = require('../services/EmpleadoService');
 
+const obtenerVehiculos = async (req, res) => {
+  try {
+    const vehiculos = await EmpleadoService.obtenerVehiculos(req.usuario.id_usuario);
+    return res.json({ ok: true, vehiculos });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({ ok: false, message: error.message || 'Error al consultar vehículos' });
+  }
+};
+
 const obtenerCuposDisponibles = async (req, res) => {
   try {
     const idUsuario = req.usuario ? req.usuario.id_usuario : null;
@@ -53,4 +63,4 @@ const obtenerHistorial = async (req, res) => {
   }
 };
 
-module.exports = { obtenerCuposDisponibles, obtenerPaseActivo, crearReserva, obtenerHistorial };
+module.exports = { obtenerVehiculos, obtenerCuposDisponibles, obtenerPaseActivo, crearReserva, obtenerHistorial };

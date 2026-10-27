@@ -258,28 +258,111 @@
         </div>
       </div>
 
-      <!-- CATÁLOGO GENERAL DE CUPOS Y VEHÍCULOS DE PORTERÍA -->
-      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <!-- CATÁLOGO Y PLANO 2D INTERACTIVO DE PORTERÍA -->
+      <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-md">
+        <!-- BARRA SUPERIOR DE CONTROL: TÍTULO, SELECTOR DE PISOS Y MODO DE VISTA -->
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pb-5 border-b border-slate-100">
           <div>
-            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <i class="fa-solid fa-grip text-orange-500"></i> Mapa General de Cupos de Parqueo
-            </h2>
-            <p class="text-xs text-slate-500">Estado actual del parqueadero de la sede</p>
+            <div class="flex items-center gap-2">
+              <span class="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center text-sm font-black shadow-sm">
+                <i class="fa-solid fa-map-location-dot"></i>
+              </span>
+              <h2 class="text-xl font-extrabold text-slate-800 tracking-tight">Plano Interactivo & Bahías 2D</h2>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">Supervisión en tiempo real de bahías, circulación y vehículos en sede</p>
           </div>
 
-          <!-- BOTONES FILTRO DE CATÁLOGO -->
+          <!-- SELECTORES DE VISTA Y PISO -->
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Selector de Nivel / Piso -->
+            <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
+              <span class="px-2 text-slate-400 uppercase text-[10px] tracking-wider"><i class="fa-solid fa-layer-group"></i> Nivel:</span>
+              <button onclick="cambiarPisoPorteria('TODOS')" id="btnPisoTODOS" class="px-3 py-1.5 rounded-lg transition bg-white text-slate-800 shadow-sm">Todos</button>
+              <button onclick="cambiarPisoPorteria('Piso 1')" id="btnPiso1" class="px-3 py-1.5 rounded-lg transition hover:bg-white/80">Piso 1</button>
+              <button onclick="cambiarPisoPorteria('Piso 2')" id="btnPiso2" class="px-3 py-1.5 rounded-lg transition hover:bg-white/80">Piso 2</button>
+            </div>
+
+            <!-- Alternador de Modo de Visualización (Plano 2D vs Tarjetas) -->
+            <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+              <button onclick="cambiarModoVisualizacionPorteria('PLANO')" id="btnModoPlano" class="px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 bg-orange-600 text-white shadow-sm">
+                <i class="fa-solid fa-vector-square"></i> Plano 2D
+              </button>
+              <button onclick="cambiarModoVisualizacionPorteria('TARJETAS')" id="btnModoTarjetas" class="px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 text-slate-600 hover:bg-white">
+                <i class="fa-solid fa-table-cells"></i> Cuadrícula
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- FILTROS DE ESTADO Y LEYENDA VIAL -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div class="flex flex-wrap gap-2">
             <button onclick="filtrarCatalogo('TODOS')" id="filterBtnTODOS" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-orange-500 text-white shadow-sm">Todos</button>
             <button onclick="filtrarCatalogo('RESERVADO')" id="filterBtnRESERVADO" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200">Reservados</button>
             <button onclick="filtrarCatalogo('OCUPADO')" id="filterBtnOCUPADO" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200">En Sitio (Ocupados)</button>
             <button onclick="filtrarCatalogo('DISPONIBLE')" id="filterBtnDISPONIBLE" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200">Disponibles</button>
           </div>
+
+          <!-- LEYENDA TÉCNICA VIAL -->
+          <div class="flex items-center gap-4 text-[11px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse"></span> Disponible</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm"></span> Reservado</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-orange-600 shadow-sm"></span> En Sitio</span>
+          </div>
         </div>
 
-        <!-- REJILLA DE TARJETAS DE CUPOS -->
-        <div id="gridCatalogoPorteria" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <!-- VISTA 1: PLANO VIAL 2D ARQUITECTÓNICO -->
+        <div id="contenedorPlano2D" class="space-y-6">
+          <div id="canvasPlanoVial" class="parking-blueprint">
+            <!-- Renderizado dinámico de las bahías y carril de circulación vial -->
+          </div>
+        </div>
+
+        <!-- VISTA 2: REJILLA DE TARJETAS CLÁSICAS -->
+        <div id="gridCatalogoPorteria" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <!-- Carga dinámicamente mediante app.js -->
+        </div>
+      </div>
+
+      <!-- MODAL INTERACTIVO DE DETALLE DE BAHÍA (CLICK EN EL PLANO) -->
+      <div id="modalDetalleCupoPorteria" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+        <div class="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-orange-200 relative overflow-hidden transform transition-all">
+          <div id="modalCupoHeaderBar" class="absolute top-0 left-0 right-0 h-2 bg-orange-500"></div>
+
+          <div class="flex justify-between items-start mb-4 pt-1">
+            <div class="flex items-center gap-3">
+              <span id="modalCupoIcon" class="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-xl font-black">
+                <i class="fa-solid fa-car"></i>
+              </span>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 id="modalCupoCodigo" class="text-xl font-black text-slate-800">A-101</h3>
+                  <span id="modalCupoPiso" class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">Piso 1</span>
+                </div>
+                <p id="modalCupoTipo" class="text-xs font-semibold text-slate-500">Vehículo: CARRO</p>
+              </div>
+            </div>
+            <button onclick="cerrarModalDetalleCupo()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <!-- ESTADO BADGE -->
+          <div class="mb-4">
+            <div id="modalCupoEstadoBadge" class="p-3 rounded-2xl text-xs font-extrabold flex items-center justify-between">
+              <!-- Dinámico -->
+            </div>
+          </div>
+
+          <!-- DETALLES DEL VEHÍCULO Y CONDUCTOR -->
+          <div id="modalCupoDetallesCuerpo" class="space-y-3 bg-slate-50 rounded-2xl p-4 border border-slate-200/80 mb-5 text-xs">
+            <!-- Dinámico -->
+          </div>
+
+          <!-- BOTONES DE ACCIÓN RÁPIDA -->
+          <div id="modalCupoAcciones" class="flex gap-2">
+            <!-- Botones dinámicos de Check-In o Check-Out -->
+          </div>
         </div>
       </div>
 
@@ -380,37 +463,39 @@
               </button>
             </header>
 
-            <div class="mobile-summary safe-top">
-              <div class="mini-stat">
-                <span class="label">Estado</span>
-                <strong>Activo</strong>
+            <section class="mobile-view-panel" data-mobile-panel="pase">
+              <div class="mobile-summary safe-top">
+                <div class="mini-stat">
+                  <span class="label">Estado de cuenta</span>
+                  <strong>Activo</strong>
+                </div>
+                <div class="mini-stat">
+                  <span class="label">Sede</span>
+                  <strong id="employeeMobileSite">Cargando...</strong>
+                </div>
               </div>
-              <div class="mini-stat">
-                <span class="label">Sede</span>
-                <strong>Principal</strong>
+
+              <div id="activePassCardMobile" class="space-y-4">
+                <!-- Se inyecta dinámicamente -->
               </div>
-            </div>
 
-            <div id="activePassCardMobile" class="space-y-4">
-              <!-- Se inyecta dinámicamente -->
-            </div>
+              <div class="quick-actions">
+                <button onclick="abrirModalNuevaReserva()" class="quick-action primary">
+                  <i class="fa-solid fa-calendar-plus"></i>
+                  <span>Reservar</span>
+                </button>
+                <button onclick="setMobileTab('vehiculos')" class="quick-action">
+                  <i class="fa-solid fa-car"></i>
+                  <span>Vehículos</span>
+                </button>
+                <button onclick="setMobileTab('perfil')" class="quick-action">
+                  <i class="fa-solid fa-circle-user"></i>
+                  <span>Perfil</span>
+                </button>
+              </div>
+            </section>
 
-            <div class="quick-actions">
-              <button onclick="abrirModalNuevaReserva()" class="quick-action primary">
-                <i class="fa-solid fa-calendar-plus"></i>
-                <span>Reservar</span>
-              </button>
-              <button onclick="cargarPaseEmpleado()" class="quick-action">
-                <i class="fa-solid fa-ticket"></i>
-                <span>Pase</span>
-              </button>
-              <button onclick="alert('Perfil de usuario verificado correctamente.')" class="quick-action">
-                <i class="fa-solid fa-circle-user"></i>
-                <span>Perfil</span>
-              </button>
-            </div>
-
-            <section class="history-card">
+            <section class="history-card mobile-view-panel hidden" data-mobile-panel="historial">
               <div class="history-header">
                 <span>Historial de accesos</span>
                 <i class="fa-solid fa-clock-history"></i>
@@ -420,16 +505,44 @@
               </div>
             </section>
 
+            <section class="history-card mobile-view-panel hidden" data-mobile-panel="vehiculos">
+              <div class="history-header"><span>Mis vehículos</span><i class="fa-solid fa-car"></i></div>
+              <div id="employeeVehiclesList" class="employee-vehicle-list"><p class="admin-loading">Cargando vehículos...</p></div>
+              <button class="employee-outline-action" onclick="abrirModalNuevaReserva()"><i class="fa-solid fa-plus"></i> Añadir vehículo al reservar</button>
+            </section>
+
+            <section class="history-card mobile-view-panel hidden" data-mobile-panel="perfil">
+              <div class="employee-profile-heading">
+                <span class="employee-profile-avatar"><i class="fa-solid fa-user"></i></span>
+                <div><p class="admin-eyebrow">MI CUENTA</p><h4 id="employeeProfileName">Cargando perfil...</h4><span id="employeeProfileRole" class="admin-role-pill">Empleado</span></div>
+              </div>
+              <dl class="employee-profile-details">
+                <div><dt>Correo</dt><dd id="employeeProfileEmail">—</dd></div>
+                <div><dt>Cargo</dt><dd id="employeeProfilePosition">—</dd></div>
+                <div><dt>Empresa</dt><dd id="employeeProfileCompany">—</dd></div>
+                <div><dt>Sede</dt><dd id="employeeProfileSite">—</dd></div>
+                <div><dt>Área</dt><dd id="employeeProfileArea">—</dd></div>
+              </dl>
+              <div class="employee-account-actions">
+                <p>Protege tus credenciales y cierra la sesión al terminar en un dispositivo compartido.</p>
+                <button class="employee-outline-action danger" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Cerrar sesión</button>
+              </div>
+            </section>
+
             <nav class="mobile-footer safe-bottom" aria-label="Menú móvil">
-              <button onclick="cargarPaseEmpleado()" class="footer-item active">
+              <button onclick="setMobileTab('pase')" class="footer-item active" data-mobile-tab="pase">
                 <i class="fa-solid fa-ticket"></i>
                 <span>Mi Pase</span>
               </button>
-              <button onclick="abrirModalNuevaReserva()" class="footer-item">
-                <i class="fa-solid fa-calendar-plus"></i>
-                <span>Reservar</span>
+              <button onclick="setMobileTab('historial')" class="footer-item" data-mobile-tab="historial">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span>Historial</span>
               </button>
-              <button onclick="alert('Perfil de usuario verificado correctamente.')" class="footer-item">
+              <button onclick="setMobileTab('vehiculos')" class="footer-item" data-mobile-tab="vehiculos">
+                <i class="fa-solid fa-car"></i>
+                <span>Vehículos</span>
+              </button>
+              <button onclick="setMobileTab('perfil')" class="footer-item" data-mobile-tab="perfil">
                 <i class="fa-solid fa-circle-user"></i>
                 <span>Perfil</span>
               </button>

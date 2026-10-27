@@ -4,8 +4,11 @@ const API_URL = '/api/v1';
 let currentToken = null;
 let currentUser = null;
 let currentInterface = 'PORTERIA'; // 'PORTERIA' o 'EMPLEADO'
+let currentMobileTab = 'pase';
 let catalogoCache = [];
 let filtroActual = 'TODOS';
+let currentPorteriaPiso = 'TODOS';
+let currentPorteriaModo = 'PLANO';
 let currentAdminPage = 'dashboard';
 const adminCache = { cupos: [], reservas: [], vehiculos: [], usuarios: [] };
 
@@ -204,8 +207,7 @@ function switchInterface(targetInterface) {
   if (targetInterface === 'PORTERIA') {
     cargarCatalogoPorteria();
   } else if (targetInterface === 'EMPLEADO') {
-    cargarPaseEmpleado();
-    cargarHistorialEmpleado();
+    setMobileTab(currentMobileTab);
   } else if (targetInterface === 'ADMIN') {
     abrirPaginaAdmin(currentAdminPage);
   }
@@ -215,6 +217,73 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[character]);
+}
+
+function setMobileTab(tab) {
+  const panels = ['pase', 'historial', 'vehiculos', 'perfil'];
+  if (!panels.includes(tab)) return;
+  currentMobileTab = tab;
+
+  document.querySelectorAll('[data-mobile-panel]').forEach(panel => {
+    panel.classList.toggle('hidden', panel.dataset.mobilePanel !== tab);
+  });
+  document.querySelectorAll('[data-mobile-tab]').forEach(button => {
+    button.classList.toggle('active', button.dataset.mobileTab === tab);
+  });
+
+  if (tab === 'pase') cargarPaseEmpleado();
+  if (tab === 'historial') cargarHistorialEmpleado();
+  if (tab === 'vehiculos') cargarVehiculosEmpleado();
+  if (tab === 'perfil') cargarPerfilEmpleado();
+}
+
+async function cargarVehiculosEmpleado() {
+  const container = document.getElementById('employeeVehiclesList');
+  if (!container) return;
+  container.innerHTML = '<p class="admin-loading">Cargando vehículos...</p>';
+
+  try {
+    const res = await fetch(`${API_URL}/mobile/empleado/vehiculos`, {
+      headers: { Authorization: `Bearer ${currentToken}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'No se pudieron consultar los vehículos.');
+
+    const vehicles = data.vehiculos || [];
+    container.innerHTML = vehicles.length
+      ? vehicles.map(vehicle => `
+          <article class="employee-vehicle-item">
+            <span class="employee-vehicle-icon"><i class="fa-solid ${vehicle.tipo_vehiculo === 'MOTO' ? 'fa-motorcycle' : 'fa-car'}"></i></span>
+            <div><strong>${escapeHtml(vehicle.placa)}</strong><small>${escapeHtml(`${vehicle.marca || ''} ${vehicle.modelo || ''}`.trim())}</small><small>${escapeHtml(vehicle.tipo_vehiculo)} · ${escapeHtml(vehicle.color || 'Color no informado')}</small></div>
+          </article>`).join('')
+      : '<p class="employee-empty-state">Aún no tienes vehículos registrados. Registra uno al crear tu próxima reserva.</p>';
+  } catch (error) {
+    container.innerHTML = `<p class="employee-empty-state error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function cargarPerfilEmpleado() {
+  try {
+    const res = await fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${currentToken}` }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.usuario) throw new Error(data.message || 'No se pudo consultar el perfil.');
+
+    const profile = data.usuario;
+    document.getElementById('employeeProfileName').textContent =
+      profile.nombre_completo || `${profile.nombres || ''} ${profile.apellidos || ''}`.trim();
+    document.getElementById('employeeProfileRole').textContent = normalizeRoleLabel(profile.rol);
+    document.getElementById('employeeProfileEmail').textContent = profile.correo || '—';
+    document.getElementById('employeeProfilePosition').textContent = profile.cargo || '—';
+    document.getElementById('employeeProfileCompany').textContent = profile.razon_social || '—';
+    document.getElementById('employeeProfileSite').textContent = profile.nombre_sede || '—';
+    document.getElementById('employeeProfileArea').textContent = profile.nombre_area || '—';
+    document.getElementById('employeeMobileSite').textContent = profile.nombre_sede || 'Principal';
+    safeSetStorage('parkgo_user', JSON.stringify(profile));
+  } catch (error) {
+    document.getElementById('employeeProfileName').textContent = error.message;
+  }
 }
 
 async function adminRequest(path, options = {}) {
@@ -472,10 +541,15 @@ function mostrarLogin() {
 // ========================================================
 
 async function cargarCatalogoPorteria() {
-  const container = document.getElementById('gridCatalogoPorteria');
-  if (!container) return;
+  const containerGrid = document.getElementById('gridCatalogoPorteria');
+  const containerPlano = document.getElementById('canvasPlanoVial');
 
-  container.innerHTML = '<div class="col-span-full text-center py-8 text-slate-400 font-bold"><i class="fa-solid fa-spinner fa-spin text-2xl text-orange-500 mb-2"></i><p>Cargando catálogo en tiempo real...</p></div>';
+  if (containerGrid) {
+    containerGrid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-400 font-bold"><i class="fa-solid fa-spinner fa-spin text-2xl text-orange-500 mb-2"></i><p>Cargando catálogo en tiempo real...</p></div>';
+  }
+  if (containerPlano) {
+    containerPlano.innerHTML = '<div class="text-center py-12 text-slate-400 font-bold"><i class="fa-solid fa-spinner fa-spin text-3xl text-orange-500 mb-3"></i><p>Construyendo plano vial 2D...</p></div>';
+  }
 
   try {
     const res = await fetch(`${API_URL}/web/accesos/catalogo`, {
@@ -486,12 +560,16 @@ async function cargarCatalogoPorteria() {
     if (res.ok && data.catalogo) {
       catalogoCache = data.catalogo;
       actualizarEstadisticasPorteria(catalogoCache);
-      renderizarGridCatalogo(catalogoCache);
+      renderizarVistasPorteria();
     } else {
-      container.innerHTML = `<p class="col-span-full text-center py-6 text-red-500 font-bold">Error: ${data.message || 'No se pudo cargar el catálogo'}</p>`;
+      const errHtml = `<p class="text-center py-6 text-red-500 font-bold">Error: ${data.message || 'No se pudo cargar el catálogo'}</p>`;
+      if (containerGrid) containerGrid.innerHTML = errHtml;
+      if (containerPlano) containerPlano.innerHTML = errHtml;
     }
   } catch (err) {
-    container.innerHTML = '<p class="col-span-full text-center py-6 text-red-500 font-bold">Error de red al consultar el catálogo.</p>';
+    const errHtml = '<p class="text-center py-6 text-red-500 font-bold">Error de red al consultar el catálogo.</p>';
+    if (containerGrid) containerGrid.innerHTML = errHtml;
+    if (containerPlano) containerPlano.innerHTML = errHtml;
   }
 }
 
@@ -501,10 +579,15 @@ function actualizarEstadisticasPorteria(catalogo) {
   const reservados = catalogo.filter(c => c.estado_cupo === 'RESERVADO').length;
   const disponibles = catalogo.filter(c => c.estado_cupo === 'DISPONIBLE').length;
 
-  document.getElementById('statTotalCupos').innerText = total;
-  document.getElementById('statOcupados').innerText = ocupados;
-  document.getElementById('statReservados').innerText = reservados;
-  document.getElementById('statDisponibles').innerText = disponibles;
+  const elTotal = document.getElementById('statTotalCupos');
+  const elOcupados = document.getElementById('statOcupados');
+  const elReservados = document.getElementById('statReservados');
+  const elDisponibles = document.getElementById('statDisponibles');
+
+  if (elTotal) elTotal.innerText = total;
+  if (elOcupados) elOcupados.innerText = ocupados;
+  if (elReservados) elReservados.innerText = reservados;
+  if (elDisponibles) elDisponibles.innerText = disponibles;
 }
 
 function filtrarCatalogo(estado) {
@@ -521,16 +604,177 @@ function filtrarCatalogo(estado) {
     }
   });
 
+  renderizarVistasPorteria();
+}
+
+function cambiarPisoPorteria(piso) {
+  currentPorteriaPiso = piso;
+
+  ['TODOS', 'Piso 1', 'Piso 2'].forEach(p => {
+    const btnId = p === 'TODOS' ? 'btnPisoTODOS' : p === 'Piso 1' ? 'btnPiso1' : 'btnPiso2';
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      if (p === piso) {
+        btn.className = 'px-3 py-1.5 rounded-lg transition bg-white text-slate-800 shadow-sm font-bold';
+      } else {
+        btn.className = 'px-3 py-1.5 rounded-lg transition hover:bg-white/80 text-slate-500';
+      }
+    }
+  });
+
+  renderizarVistasPorteria();
+}
+
+function cambiarModoVisualizacionPorteria(modo) {
+  currentPorteriaModo = modo;
+  const btnPlano = document.getElementById('btnModoPlano');
+  const btnTarjetas = document.getElementById('btnModoTarjetas');
+  const viewPlano = document.getElementById('contenedorPlano2D');
+  const viewTarjetas = document.getElementById('gridCatalogoPorteria');
+
+  if (modo === 'PLANO') {
+    if (btnPlano) btnPlano.className = 'px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 bg-orange-600 text-white shadow-sm';
+    if (btnTarjetas) btnTarjetas.className = 'px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 text-slate-600 hover:bg-white';
+    if (viewPlano) viewPlano.classList.remove('hidden');
+    if (viewTarjetas) viewTarjetas.classList.add('hidden');
+  } else {
+    if (btnPlano) btnPlano.className = 'px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 text-slate-600 hover:bg-white';
+    if (btnTarjetas) btnTarjetas.className = 'px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 bg-orange-600 text-white shadow-sm';
+    if (viewPlano) viewPlano.classList.add('hidden');
+    if (viewTarjetas) viewTarjetas.classList.remove('hidden');
+  }
+}
+
+function renderizarVistasPorteria() {
+  renderizarPlano2D(catalogoCache);
   renderizarGridCatalogo(catalogoCache);
 }
 
+// ========================================================
+// RENDERIZADO DEL PLANO 2D ARQUITECTÓNICO VIAL
+// ========================================================
+function renderizarPlano2D(catalogo) {
+  const canvas = document.getElementById('canvasPlanoVial');
+  if (!canvas) return;
+
+  // Filtrar según piso y estado
+  let datos = catalogo;
+  if (currentPorteriaPiso !== 'TODOS') {
+    datos = datos.filter(c => (c.piso || 'Piso 1').toLowerCase() === currentPorteriaPiso.toLowerCase());
+  }
+
+  // Agrupar por piso
+  const pisosMap = {};
+  datos.forEach(item => {
+    const p = item.piso || 'Piso 1';
+    if (!pisosMap[p]) pisosMap[p] = [];
+    pisosMap[p].push(item);
+  });
+
+  const pisosKeys = Object.keys(pisosMap).sort();
+
+  if (pisosKeys.length === 0) {
+    canvas.innerHTML = '<div class="text-center py-12 text-slate-400 font-bold bg-slate-900 rounded-3xl border border-slate-800">No se encontraron bahías para este filtro.</div>';
+    return;
+  }
+
+  canvas.innerHTML = pisosKeys.map(pisoNombre => {
+    const bahias = pisosMap[pisoNombre];
+
+    // Aplicar filtro de estado para visualización o opacidad
+    const totalPiso = bahias.length;
+    const ocupadosPiso = bahias.filter(b => b.estado_cupo === 'OCUPADO').length;
+    const reservadosPiso = bahias.filter(b => b.estado_cupo === 'RESERVADO').length;
+    const disponiblesPiso = bahias.filter(b => b.estado_cupo === 'DISPONIBLE').length;
+
+    // Dividir en 2 filas viales (arriba y abajo del carril de circulación)
+    const mid = Math.ceil(bahias.length / 2);
+    const filaNorte = bahias.slice(0, mid);
+    const filaSur = bahias.slice(mid);
+
+    const renderBay = (b) => {
+      const matchFiltro = filtroActual === 'TODOS' || b.estado_cupo === filtroActual;
+      const estadoClass = b.estado_cupo === 'OCUPADO' ? 'state-ocupado' : b.estado_cupo === 'RESERVADO' ? 'state-reservado' : 'state-disponible';
+      const isMoto = (b.tipo_cupo || '').toUpperCase() === 'MOTO';
+      const vehicleIcon = isMoto ? 'fa-motorcycle' : 'fa-car-side';
+      const statusLabel = b.estado_cupo === 'OCUPADO' ? 'En Sitio' : b.estado_cupo === 'RESERVADO' ? 'Reservado' : 'Disponible';
+
+      const opacityStyle = matchFiltro ? '' : 'opacity: 0.25; filter: grayscale(80%); pointer-events: none;';
+
+      return `
+        <div class="parking-bay-card ${estadoClass}" style="${opacityStyle}" onclick="abrirModalDetalleCupo(${Number(b.id_cupo)})" title="Clic para ver detalles de la bahía ${escapeHtml(b.codigo_espacio)}">
+          <div class="bay-top">
+            <span class="bay-code">${escapeHtml(b.codigo_espacio)}</span>
+            <span class="bay-type-tag">
+              <i class="fa-solid ${isMoto ? 'fa-motorcycle' : 'fa-car'}"></i>
+              ${isMoto ? 'MOTO' : 'CARRO'}
+            </span>
+          </div>
+
+          <div class="bay-center">
+            <i class="fa-solid ${vehicleIcon} bay-vehicle-silhouette"></i>
+            ${b.placa ? `<span class="bay-plate-badge">${escapeHtml(b.placa)}</span>` : '<span class="text-[10px] text-slate-500 font-bold mt-1 tracking-wider uppercase">LIBRE</span>'}
+          </div>
+
+          <div class="bay-foot">
+            <span class="flex items-center gap-1.5">
+              <span class="bay-status-dot"></span>
+              <span class="bay-status-label">${statusLabel}</span>
+            </span>
+            <span class="bay-action-hint"><i class="fa-solid fa-up-right-from-square"></i></span>
+          </div>
+        </div>
+      `;
+    };
+
+    return `
+      <div class="blueprint-floor-block">
+        <div class="blueprint-floor-header">
+          <div class="blueprint-floor-title">
+            <span class="blueprint-floor-badge"><i class="fa-solid fa-layer-group"></i> ${escapeHtml(pisoNombre)}</span>
+            <span class="text-xs text-slate-400 font-semibold hidden sm:inline">Distribución arquitectónica de bahías</span>
+          </div>
+          <div class="blueprint-floor-stats">
+            <span class="text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-circle text-[6px]"></i> ${disponiblesPiso} libres</span>
+            <span class="text-amber-400 flex items-center gap-1"><i class="fa-solid fa-circle text-[6px]"></i> ${reservadosPiso} reserv.</span>
+            <span class="text-orange-400 flex items-center gap-1"><i class="fa-solid fa-circle text-[6px]"></i> ${ocupadosPiso} en sitio</span>
+          </div>
+        </div>
+
+        <!-- FILA NORTE DE BAHÍAS -->
+        <div class="blueprint-bays-row">
+          ${filaNorte.map(renderBay).join('')}
+        </div>
+
+        <!-- CARRIL VIAL DE CIRCULACIÓN -->
+        <div class="circulation-roadway">
+          <span class="circulation-sign"><i class="fa-solid fa-arrow-right-to-bracket text-emerald-400"></i> Entrada</span>
+          <span class="circulation-sign"><i class="fa-solid fa-road text-amber-400"></i> Carril Interno (Máx 10 km/h)</span>
+          <span class="circulation-sign"><i class="fa-solid fa-arrow-right-from-bracket text-orange-400"></i> Salida</span>
+        </div>
+
+        <!-- FILA SUR DE BAHÍAS -->
+        <div class="blueprint-bays-row">
+          ${filaSur.map(renderBay).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ========================================================
+// RENDERIZADO DE LA CUADRÍCULA TRADICIONAL
+// ========================================================
 function renderizarGridCatalogo(catalogo) {
   const container = document.getElementById('gridCatalogoPorteria');
   if (!container) return;
 
   let filtrados = catalogo;
+  if (currentPorteriaPiso !== 'TODOS') {
+    filtrados = filtrados.filter(c => (c.piso || 'Piso 1').toLowerCase() === currentPorteriaPiso.toLowerCase());
+  }
   if (filtroActual !== 'TODOS') {
-    filtrados = catalogo.filter(c => c.estado_cupo === filtroActual);
+    filtrados = filtrados.filter(c => c.estado_cupo === filtroActual);
   }
 
   if (filtrados.length === 0) {
@@ -564,27 +808,124 @@ function renderizarGridCatalogo(catalogo) {
     }
 
     return `
-      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition relative flex flex-col justify-between">
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition relative flex flex-col justify-between" onclick="abrirModalDetalleCupo(${Number(item.id_cupo)})" style="cursor: pointer;">
         <div>
           <div class="flex justify-between items-start mb-2">
-            <span class="text-xs font-extrabold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200/60">${item.codigo_espacio} (${item.piso || 'Piso 1'})</span>
+            <span class="text-xs font-extrabold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200/60">${escapeHtml(item.codigo_espacio)} (${escapeHtml(item.piso || 'Piso 1')})</span>
             ${badge}
           </div>
 
-          <h4 class="text-lg font-black text-slate-800 tracking-tight mt-2">${item.placa || 'Sin Vehículo'}</h4>
-          <p class="text-xs font-semibold text-slate-500">${item.vehiculo_info || 'Espacio libre'}</p>
+          <h4 class="text-lg font-black text-slate-800 tracking-tight mt-2">${escapeHtml(item.placa || 'Sin Vehículo')}</h4>
+          <p class="text-xs font-semibold text-slate-500">${escapeHtml(item.vehiculo_info || 'Espacio libre')}</p>
           
-          ${item.nombre_usuario ? `<p class="text-xs text-slate-600 mt-2 flex items-center gap-1 font-medium"><i class="fa-solid fa-user text-slate-400"></i> ${item.nombre_usuario}</p>` : ''}
-          ${item.codigo_pase ? `<p class="text-[11px] font-mono text-orange-600 font-bold mt-1">Código: ${item.codigo_pase}</p>` : ''}
+          ${item.nombre_usuario ? `<p class="text-xs text-slate-600 mt-2 flex items-center gap-1 font-medium"><i class="fa-solid fa-user text-slate-400"></i> ${escapeHtml(item.nombre_usuario)}</p>` : ''}
+          ${item.codigo_pase ? `<p class="text-[11px] font-mono text-orange-600 font-bold mt-1">Código: ${escapeHtml(item.codigo_pase)}</p>` : ''}
         </div>
 
-        ${btnAccion}
+        <div onclick="event.stopPropagation()">
+          ${btnAccion}
+        </div>
       </div>
     `;
   }).join('');
 }
 
-// Búsqueda y Validación de Pase
+// ========================================================
+// MODAL INTERACTIVO DE DETALLE DE BAHÍA
+// ========================================================
+function abrirModalDetalleCupo(idCupo) {
+  const item = catalogoCache.find(c => Number(c.id_cupo) === Number(idCupo));
+  if (!item) return;
+
+  const modal = document.getElementById('modalDetalleCupoPorteria');
+  const headerBar = document.getElementById('modalCupoHeaderBar');
+  const iconSpan = document.getElementById('modalCupoIcon');
+  const codigoEl = document.getElementById('modalCupoCodigo');
+  const pisoEl = document.getElementById('modalCupoPiso');
+  const tipoEl = document.getElementById('modalCupoTipo');
+  const badgeEl = document.getElementById('modalCupoEstadoBadge');
+  const bodyEl = document.getElementById('modalCupoDetallesCuerpo');
+  const actionsEl = document.getElementById('modalCupoAcciones');
+
+  const isMoto = (item.tipo_cupo || '').toUpperCase() === 'MOTO';
+  codigoEl.textContent = item.codigo_espacio;
+  pisoEl.textContent = item.piso || 'Nivel 1';
+  tipoEl.textContent = `Tipo: ${isMoto ? 'MOTO' : 'CARRO'}`;
+  iconSpan.innerHTML = `<i class="fa-solid ${isMoto ? 'fa-motorcycle' : 'fa-car'}"></i>`;
+
+  let badgeColor = '';
+  let badgeText = '';
+
+  if (item.estado_cupo === 'OCUPADO') {
+    headerBar.className = 'absolute top-0 left-0 right-0 h-2 bg-orange-600';
+    badgeEl.className = 'p-3 rounded-2xl text-xs font-extrabold flex items-center justify-between bg-orange-50 text-orange-800 border border-orange-200';
+    badgeEl.innerHTML = `<span><i class="fa-solid fa-car-side text-orange-600 mr-1.5"></i> EN SITIO (VEHÍCULO ADENTRO)</span><span class="w-2.5 h-2.5 rounded-full bg-orange-600"></span>`;
+  } else if (item.estado_cupo === 'RESERVADO') {
+    headerBar.className = 'absolute top-0 left-0 right-0 h-2 bg-amber-500';
+    badgeEl.className = 'p-3 rounded-2xl text-xs font-extrabold flex items-center justify-between bg-amber-50 text-amber-800 border border-amber-200';
+    badgeEl.innerHTML = `<span><i class="fa-solid fa-clock text-amber-600 mr-1.5"></i> RESERVADO (ESPERANDO LLEGADA)</span><span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>`;
+  } else {
+    headerBar.className = 'absolute top-0 left-0 right-0 h-2 bg-emerald-500';
+    badgeEl.className = 'p-3 rounded-2xl text-xs font-extrabold flex items-center justify-between bg-emerald-50 text-emerald-800 border border-emerald-200';
+    badgeEl.innerHTML = `<span><i class="fa-solid fa-circle-check text-emerald-600 mr-1.5"></i> DISPONIBLE PARA RESERVAS</span><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>`;
+  }
+
+  bodyEl.innerHTML = `
+    <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+      <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Vehículo</span>
+      <span class="font-extrabold text-slate-800">${escapeHtml(item.vehiculo_info || (isMoto ? 'Motocicleta' : 'Automóvil'))}</span>
+    </div>
+    <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+      <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Placa Asignada</span>
+      <span class="font-mono font-black text-slate-900 bg-slate-200 px-2 py-0.5 rounded text-xs">${escapeHtml(item.placa || 'SIN ASIGNAR')}</span>
+    </div>
+    <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+      <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Conductor</span>
+      <span class="font-bold text-slate-700">${escapeHtml(item.nombre_usuario || 'Sin conductor')}</span>
+    </div>
+    <div class="flex justify-between items-center py-1">
+      <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Código Alfanumérico</span>
+      <span class="font-mono font-black text-orange-600 bg-orange-50 px-2 py-0.5 rounded text-xs">${escapeHtml(item.codigo_pase || 'N/A')}</span>
+    </div>
+  `;
+
+  let actionButtons = '';
+  if (item.estado_cupo === 'RESERVADO' && item.codigo_pase) {
+    actionButtons = `
+      <button onclick="ejecutarCheckIn('${escapeHtml(item.codigo_pase)}')" class="btn-orange flex-1 py-3 rounded-xl text-xs font-bold shadow-orange flex items-center justify-center gap-2">
+        <i class="fa-solid fa-right-to-bracket"></i> Confirmar Entrada (Check-In)
+      </button>
+      <button onclick="cerrarModalDetalleCupo()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-xl text-xs font-bold transition">
+        Cerrar
+      </button>
+    `;
+  } else if (item.estado_cupo === 'OCUPADO' && item.codigo_pase) {
+    actionButtons = `
+      <button onclick="ejecutarCheckOut('${escapeHtml(item.codigo_pase)}')" class="bg-red-600 hover:bg-red-700 text-white flex-1 py-3 rounded-xl text-xs font-bold shadow flex items-center justify-center gap-2 transition">
+        <i class="fa-solid fa-right-from-bracket"></i> Confirmar Salida (Check-Out)
+      </button>
+      <button onclick="cerrarModalDetalleCupo()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-xl text-xs font-bold transition">
+        Cerrar
+      </button>
+    `;
+  } else {
+    actionButtons = `
+      <button onclick="cerrarModalDetalleCupo()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl text-xs font-bold transition">
+        Entendido
+      </button>
+    `;
+  }
+
+  actionsEl.innerHTML = actionButtons;
+  modal.classList.remove('hidden');
+}
+
+function cerrarModalDetalleCupo() {
+  const modal = document.getElementById('modalDetalleCupoPorteria');
+  if (modal) modal.classList.add('hidden');
+}
+
+// Búsqueda y Validación de Pase (Compatible con EN_USO y EN_SITIO)
 document.getElementById('searchPassForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const codigo = document.getElementById('codigoPaseInput').value.trim();
@@ -616,7 +957,7 @@ async function consultarPasePorteria(codigo) {
           <button onclick="ejecutarCheckIn('${data.codigo}')" class="btn-orange px-4 py-2 rounded-xl text-xs font-bold shadow-orange flex items-center gap-1">
             <i class="fa-solid fa-right-to-bracket"></i> Confirmar Entrada (Check-In)
           </button>`;
-      } else if (data.estado === 'EN_SITIO') {
+      } else if (data.estado === 'EN_SITIO' || data.estado === 'EN_USO') {
         btnAccionHtml = `
           <button onclick="ejecutarCheckOut('${data.codigo}')" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow flex items-center gap-1">
             <i class="fa-solid fa-right-from-bracket"></i> Confirmar Salida (Check-Out)
@@ -629,11 +970,11 @@ async function consultarPasePorteria(codigo) {
       resultCard.innerHTML = `
         <div>
           <div class="flex items-center gap-2">
-            <span class="text-xs font-extrabold bg-orange-600 text-white px-2 py-0.5 rounded font-mono">${data.codigo}</span>
-            <span class="text-xs font-bold uppercase text-orange-700">Cupo: ${data.cupo}</span>
+            <span class="text-xs font-extrabold bg-orange-600 text-white px-2 py-0.5 rounded font-mono">${escapeHtml(data.codigo)}</span>
+            <span class="text-xs font-bold uppercase text-orange-700">Cupo: ${escapeHtml(data.cupo)}</span>
           </div>
-          <h4 class="text-base font-extrabold text-slate-800 mt-1">${data.vehiculo?.marca || 'Vehículo'} (${data.vehiculo?.placa})</h4>
-          <p class="text-xs text-slate-600">Conductor: ${data.usuario?.nombre} (${data.usuario?.correo})</p>
+          <h4 class="text-base font-extrabold text-slate-800 mt-1">${escapeHtml(data.vehiculo?.marca || 'Vehículo')} (${escapeHtml(data.vehiculo?.placa || '')})</h4>
+          <p class="text-xs text-slate-600">Conductor: ${escapeHtml(data.usuario?.nombre || 'Desconocido')} (${escapeHtml(data.usuario?.correo || '')})</p>
         </div>
         <div>
           ${btnAccionHtml}
@@ -641,7 +982,7 @@ async function consultarPasePorteria(codigo) {
       `;
     } else {
       resultCard.className = 'mt-4 p-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold';
-      resultCard.innerHTML = `<i class="fa-solid fa-circle-xmark text-base"></i> ${data.message || 'Código inválido o no encontrado.'}`;
+      resultCard.innerHTML = `<i class="fa-solid fa-circle-xmark text-base"></i> ${escapeHtml(data.message || 'Código inválido o no encontrado.')}`;
     }
   } catch (err) {
     resultCard.className = 'mt-4 p-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold';
@@ -665,8 +1006,10 @@ async function ejecutarCheckIn(codigo) {
 
     if (res.ok) {
       alert(`✅ ${data.message || 'Check-In exitoso'}`);
+      cerrarModalDetalleCupo();
       cargarCatalogoPorteria();
-      document.getElementById('validationResultCard').classList.add('hidden');
+      const valCard = document.getElementById('validationResultCard');
+      if (valCard) valCard.classList.add('hidden');
     } else {
       alert(`❌ Error: ${data.message}`);
     }
@@ -691,8 +1034,10 @@ async function ejecutarCheckOut(codigo) {
 
     if (res.ok) {
       alert(`✅ ${data.message || 'Check-Out exitoso'}`);
+      cerrarModalDetalleCupo();
       cargarCatalogoPorteria();
-      document.getElementById('validationResultCard').classList.add('hidden');
+      const valCard = document.getElementById('validationResultCard');
+      if (valCard) valCard.classList.add('hidden');
     } else {
       alert(`❌ Error: ${data.message}`);
     }
@@ -719,13 +1064,14 @@ async function cargarPaseEmpleado() {
 
     if (res.ok && data.pase) {
       const pase = data.pase;
+      const estaAdentro = pase.estado === 'EN_SITIO' || pase.estado === 'EN_USO';
       container.innerHTML = `
         <div class="bg-white rounded-[1.6rem] border border-orange-200 shadow-orange p-4 text-center relative overflow-hidden">
           <div class="absolute top-0 left-0 right-0 h-2 bg-orange-brand"></div>
 
           <div class="inline-block mb-3">
-            <span class="badge-reservado text-[10px] font-extrabold px-3 py-1 rounded-full uppercase flex items-center gap-1">
-              <i class="fa-solid fa-qrcode text-orange-500"></i> ${pase.estado === 'EN_SITIO' ? 'Dentro de la sede' : 'Reserva activa'}
+            <span class="${estaAdentro ? 'badge-ocupado' : 'badge-reservado'} text-[10px] font-extrabold px-3 py-1 rounded-full uppercase flex items-center gap-1">
+              <i class="fa-solid ${estaAdentro ? 'fa-car-side' : 'fa-qrcode'} text-orange-500"></i> ${estaAdentro ? 'Dentro de la sede' : 'Reserva activa'}
             </span>
           </div>
 
@@ -737,16 +1083,16 @@ async function cargarPaseEmpleado() {
           </div>
 
           <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.22em] mt-2">Código de pase</p>
-          <h3 class="text-2xl font-black text-orange-600 font-mono tracking-[0.22em]">${pase.codigo}</h3>
+          <h3 class="text-2xl font-black text-orange-600 font-mono tracking-[0.22em]">${escapeHtml(pase.codigo)}</h3>
 
           <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2 text-left">
             <div>
               <p class="text-[10px] text-slate-400 font-bold uppercase">Cupo</p>
-              <p class="text-sm font-black text-slate-800">${pase.cupo}</p>
+              <p class="text-sm font-black text-slate-800">${escapeHtml(pase.cupo)}</p>
             </div>
             <div>
               <p class="text-[10px] text-slate-400 font-bold uppercase">Vehículo</p>
-              <p class="text-sm font-black text-slate-800">${pase.vehiculo?.placa || 'KTM-300'}</p>
+              <p class="text-sm font-black text-slate-800">${escapeHtml(pase.vehiculo?.placa || 'KTM-300')}</p>
             </div>
           </div>
         </div>
@@ -781,15 +1127,18 @@ async function cargarHistorialEmpleado() {
     const data = await res.json();
 
     if (res.ok && data.historial && data.historial.length > 0) {
-      container.innerHTML = data.historial.map(item => `
-        <div class="history-item">
-          <div>
-            <strong>${item.codigo}</strong>
-            <small>Cupo: ${item.cupo} • ${item.vehiculo}</small>
+      container.innerHTML = data.historial.map(item => {
+        const estaAdentro = item.estado === 'EN_SITIO' || item.estado === 'EN_USO';
+        return `
+          <div class="history-item">
+            <div>
+              <strong>${escapeHtml(item.codigo)}</strong>
+              <small>Cupo: ${escapeHtml(item.cupo)} • ${escapeHtml(item.vehiculo)}</small>
+            </div>
+            <span class="status-chip ${estaAdentro ? 'orange' : 'slate'}">${escapeHtml(item.estado)}</span>
           </div>
-          <span class="status-chip ${item.estado === 'EN_SITIO' ? 'orange' : 'slate'}">${item.estado}</span>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     } else {
       container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">Sin historial reciente.</p>';
     }

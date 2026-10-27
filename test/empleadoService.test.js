@@ -6,6 +6,26 @@ process.env.DATABASE_URL = '';
 const db = require('../src/config/db');
 const EmpleadoService = require('../src/services/EmpleadoService');
 
+test('vehicle listing is scoped to the authenticated user id', async () => {
+  const originalQuery = db.query;
+  let queryText = '';
+  let queryParams = [];
+  db.query = async (text, params) => {
+    queryText = text;
+    queryParams = params;
+    return { rows: [{ id_vehiculo: 8, placa: 'OWN-008' }] };
+  };
+
+  try {
+    const vehicles = await EmpleadoService.obtenerVehiculos(44);
+    assert.match(queryText, /WHERE id_usuario = \$1/);
+    assert.deepEqual(queryParams, [44]);
+    assert.equal(vehicles[0].placa, 'OWN-008');
+  } finally {
+    db.query = originalQuery;
+  }
+});
+
 test('reservation persists vehicle details and locks the selected cup', async () => {
   const originalQuery = db.query;
   const originalWithTransaction = db.withTransaction;

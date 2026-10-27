@@ -30,7 +30,8 @@ const validarPase = async (req, res) => {
 const checkIn = async (req, res) => {
   try {
     const { codigo } = req.body;
-    const resultado = await AccesoService.registrarCheckIn(codigo);
+    const idGuarda = req.usuario ? req.usuario.id_usuario : null;
+    const resultado = await AccesoService.registrarCheckIn(codigo, idGuarda);
     return res.json({
       ok: true,
       ...resultado
