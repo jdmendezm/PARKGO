@@ -63,4 +63,34 @@ const obtenerHistorial = async (req, res) => {
   }
 };
 
-module.exports = { obtenerVehiculos, obtenerCuposDisponibles, obtenerPaseActivo, crearReserva, obtenerHistorial };
+const registrarVehiculo = async (req, res) => {
+  try {
+    const idUsuario = req.usuario ? req.usuario.id_usuario : null;
+    const resultado = await EmpleadoService.registrarVehiculo(idUsuario, req.body);
+    return res.status(201).json({ ok: true, ...resultado });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({ ok: false, message: error.message || 'Error al registrar vehículo' });
+  }
+};
+
+const eliminarVehiculo = async (req, res) => {
+  try {
+    const idUsuario = req.usuario ? req.usuario.id_usuario : null;
+    const resultado = await EmpleadoService.eliminarVehiculo(idUsuario, req.params.id);
+    return res.json({ ok: true, ...resultado });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({ ok: false, message: error.message || 'Error al eliminar vehículo' });
+  }
+};
+
+module.exports = {
+  obtenerVehiculos,
+  registrarVehiculo,
+  eliminarVehiculo,
+  obtenerCuposDisponibles,
+  obtenerPaseActivo,
+  crearReserva,
+  obtenerHistorial
+};

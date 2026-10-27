@@ -14,6 +14,122 @@ class EmpleadoService {
     return result.rows || [];
   }
 
+  static async registrarVehiculo(idUsuario, { placa, tipo_vehiculo, marca, modelo, color } = {}) {
+    const userId = Number(idUsuario);
+    const placaLimpia = String(placa || '').trim().toUpperCase();
+
+    if (!placaLimpia || placaLimpia.length < 3) {
+      const err = new Error('La placa del vehículo es requerida (mínimo 3 caracteres).');
+      err.status = 400;
+      throw err;
+    }
+
+    const tipoNormalizado = String(tipo_vehiculo || 'CARRO').trim().toUpperCase();
+    const tipoFinal = tipoNormalizado === 'CAMIONETA' ? 'CARRO' : tipoNormalizado;
+    const tiposPermitidos = ['CARRO', 'MOTO', 'BICICLETA', 'PATINETA'];
+    if (!tiposPermitidos.includes(tipoFinal)) {
+      const err = new Error(`Tipo de vehículo no válido. Permitidos: ${tiposPermitidos.join(', ')}`);
+      err.status = 400;
+      throw err;
+    }
+
+    const marcaVeh = String(marca || 'Sin Marca').trim();
+    const modeloVeh = String(modelo || 'Sin Modelo').trim();
+    const colorVeh = String(color || 'Sin Color').trim();
+
+    // Verificar si la placa ya existe
+    const existe = await db.query(
+      `SELECT id_vehiculo, id_usuario FROM vehiculo WHERE UPPER(placa) = $1`,
+      [placaLimpia]
+    );
+
+    if (existe.rows && existe.rows.length > 0) {
+      const vehiculoExistente = existe.rows[0];
+      if (Number(vehiculoExistente.id_usuario) === userId) {
+        // Actualizar datos del vehículo propio
+        const actualizado = await db.query(
+          `UPDATE vehiculo
+           SET tipo_vehiculo = $2, marca = $3, modelo = $4, color = $5
+           WHERE id_vehiculo = $1
+           RETURNING id_vehiculo, placa, tipo_vehiculo, marca, modelo, color`,
+          [vehiculoExistente.id_vehiculo, tipoFinal, marcaVeh, modeloVeh, colorVeh]
+        );
+        return {
+          mensaje: 'Vehículo actualizado con éxito.',
+          vehiculo: actualizado.rows[0]
+        };
+      } else {
+        const err = new Error(`La placa '${placaLimpia}' ya está registrada en el sistema por otro usuario.`);
+        err.status = 409;
+        throw err;
+      }
+    }
+
+    // Insertar nuevo vehículo
+    const nuevo = await db.query(
+      `INSERT INTO vehiculo (id_usuario, placa, tipo_vehiculo, marca, modelo, color)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id_vehiculo, placa, tipo_vehiculo, marca, modelo, color`,
+      [userId, placaLimpia, tipoFinal, marcaVeh, modeloVeh, colorVeh]
+    );
+
+    return {
+      mensaje: 'Vehículo registrado exitosamente en tu garaje.',
+      vehiculo: nuevo.rows[0]
+    };
+  }
+
+  static async eliminarVehiculo(idUsuario, idVehiculo) {
+    const userId = Number(idUsuario);
+    const vehId = Number(idVehiculo);
+
+    if (!vehId || vehId <= 0) {
+      const err = new Error('Identificador de vehículo no válido.');
+      err.status = 400;
+      throw err;
+    }
+
+    const veh = await db.query(
+      `SELECT id_vehiculo FROM vehiculo WHERE id_vehiculo = $1 AND id_usuario = $2`,
+      [vehId, userId]
+    );
+
+    if (!veh.rows || veh.rows.length === 0) {
+      const err = new Error('Vehículo no encontrado en tu garaje.');
+      err.status = 404;
+      throw err;
+    }
+
+    // Verificar si tiene reservas activas o en uso
+    const activa = await db.query(
+      `SELECT id_reserva FROM reserva
+       WHERE id_vehiculo = $1 AND estado_reserva IN ('ACTIVA', 'EN_USO')
+       LIMIT 1`,
+      [vehId]
+    );
+
+    if (activa.rows && activa.rows.length > 0) {
+      const err = new Error('No puedes desvincular un vehículo con una reserva vigente o que se encuentra en sede.');
+      err.status = 409;
+      throw err;
+    }
+
+    // Verificar si existen reservas históricas asociadas
+    const historico = await db.query(
+      `SELECT id_reserva FROM reserva WHERE id_vehiculo = $1 LIMIT 1`,
+      [vehId]
+    );
+
+    if (historico.rows && historico.rows.length > 0) {
+      // Para preservar la integridad referencial del histórico, desvinculamos del usuario
+      await db.query(`UPDATE vehiculo SET id_usuario = NULL WHERE id_vehiculo = $1`, [vehId]);
+    } else {
+      await db.query(`DELETE FROM vehiculo WHERE id_vehiculo = $1`, [vehId]);
+    }
+
+    return { mensaje: 'Vehículo retirado de tu garaje con éxito.' };
+  }
+
   static async obtenerCuposDisponibles(idUsuario, tipoVehiculo) {
     const userId = Number(idUsuario);
     const tipoNormalizado = String(tipoVehiculo || 'CARRO').toUpperCase();

@@ -237,10 +237,15 @@ function setMobileTab(tab) {
   if (tab === 'perfil') cargarPerfilEmpleado();
 }
 
+let employeeVehiclesCache = [];
+let employeeHistoryCache = [];
+let currentModalPiso = 'TODOS';
+let cuposDisponiblesCache = [];
+
 async function cargarVehiculosEmpleado() {
   const container = document.getElementById('employeeVehiclesList');
   if (!container) return;
-  container.innerHTML = '<p class="admin-loading">Cargando vehículos...</p>';
+  container.innerHTML = '<p class="admin-loading py-6 text-center text-xs text-slate-400 font-bold"><i class="fa-solid fa-spinner fa-spin text-orange-500 mr-1.5"></i> Consultando tu garaje...</p>';
 
   try {
     const res = await fetch(`${API_URL}/mobile/empleado/vehiculos`, {
@@ -249,16 +254,189 @@ async function cargarVehiculosEmpleado() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'No se pudieron consultar los vehículos.');
 
-    const vehicles = data.vehiculos || [];
-    container.innerHTML = vehicles.length
-      ? vehicles.map(vehicle => `
-          <article class="employee-vehicle-item">
-            <span class="employee-vehicle-icon"><i class="fa-solid ${vehicle.tipo_vehiculo === 'MOTO' ? 'fa-motorcycle' : 'fa-car'}"></i></span>
-            <div><strong>${escapeHtml(vehicle.placa)}</strong><small>${escapeHtml(`${vehicle.marca || ''} ${vehicle.modelo || ''}`.trim())}</small><small>${escapeHtml(vehicle.tipo_vehiculo)} · ${escapeHtml(vehicle.color || 'Color no informado')}</small></div>
-          </article>`).join('')
-      : '<p class="employee-empty-state">Aún no tienes vehículos registrados. Registra uno al crear tu próxima reserva.</p>';
+    employeeVehiclesCache = data.vehiculos || [];
+    actualizarSelectorVehiculosReserva(employeeVehiclesCache);
+
+    if (employeeVehiclesCache.length === 0) {
+      container.innerHTML = `
+        <div class="p-6 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+          <div class="w-12 h-12 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center text-xl mx-auto mb-2">
+            <i class="fa-solid fa-car"></i>
+          </div>
+          <h4 class="text-xs font-bold text-slate-700">Tu garaje está vacío</h4>
+          <p class="text-[11px] text-slate-400 mt-0.5 mb-3">Registra tu automóvil o motocicleta para reservar más rápido.</p>
+          <button onclick="abrirModalNuevoVehiculo()" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition shadow-sm">
+            <i class="fa-solid fa-plus mr-1"></i> Añadir Vehículo
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="space-y-2.5">
+        ${employeeVehiclesCache.map(vehicle => {
+          const isMoto = (vehicle.tipo_vehiculo || '').toUpperCase() === 'MOTO';
+          return `
+            <article class="employee-vehicle-card">
+              <div class="vehicle-info-block">
+                <span class="vehicle-type-avatar">
+                  <i class="fa-solid ${isMoto ? 'fa-motorcycle' : 'fa-car'}"></i>
+                </span>
+                <div>
+                  <strong class="font-mono text-sm tracking-wider text-slate-900">${escapeHtml(vehicle.placa)}</strong>
+                  <span class="block text-xs font-bold text-slate-700">${escapeHtml(`${vehicle.marca || ''} ${vehicle.modelo || ''}`.trim() || 'Vehículo')}</span>
+                  <span class="text-[10px] text-slate-400 font-semibold">${escapeHtml(vehicle.tipo_vehiculo)} · ${escapeHtml(vehicle.color || 'Color no informado')}</span>
+                </div>
+              </div>
+              <div class="vehicle-card-actions">
+                <button type="button" class="btn-quick-book" onclick="prepararReservaConVehiculo(${Number(vehicle.id_vehiculo)})" title="Reservar con este vehículo">
+                  <i class="fa-solid fa-bolt"></i> Reservar
+                </button>
+                <button type="button" class="btn-delete-veh" onclick="eliminarVehiculoEmpleado(${Number(vehicle.id_vehiculo)})" title="Eliminar vehículo">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    `;
   } catch (error) {
     container.innerHTML = `<p class="employee-empty-state error">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function actualizarSelectorVehiculosReserva(vehiculos) {
+  const select = document.getElementById('reservaVehiculoGuardado');
+  if (!select) return;
+
+  if (!vehiculos || vehiculos.length === 0) {
+    select.innerHTML = '<option value="">-- No tienes vehículos guardados aún --</option>';
+    return;
+  }
+
+  select.innerHTML = `
+    <option value="">-- Elige un vehículo de tu garaje (Auto-completar) --</option>
+    ${vehiculos.map(v => `
+      <option value="${Number(v.id_vehiculo)}">
+        ${escapeHtml(v.placa)} - ${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')} (${escapeHtml(v.tipo_vehiculo)})
+      </option>
+    `).join('')}
+  `;
+}
+
+function seleccionarVehiculoGuardado(idVehiculo) {
+  if (!idVehiculo) return;
+  const veh = employeeVehiclesCache.find(v => Number(v.id_vehiculo) === Number(idVehiculo));
+  if (!veh) return;
+
+  const tipoSelect = document.getElementById('reservaTipoVehiculo');
+  const placaInput = document.getElementById('reservaPlaca');
+  const marcaInput = document.getElementById('reservaMarca');
+  const modeloInput = document.getElementById('reservaModelo');
+  const colorInput = document.getElementById('reservaColor');
+
+  if (tipoSelect) tipoSelect.value = veh.tipo_vehiculo === 'MOTO' ? 'MOTO' : 'CARRO';
+  if (placaInput) placaInput.value = veh.placa || '';
+  if (marcaInput) marcaInput.value = veh.marca || '';
+  if (modeloInput) modeloInput.value = veh.modelo || '';
+  if (colorInput) colorInput.value = veh.color || '';
+
+  cargarCuposDisponibles();
+}
+
+function prepararReservaConVehiculo(idVehiculo) {
+  abrirModalNuevaReserva();
+  const select = document.getElementById('reservaVehiculoGuardado');
+  if (select) {
+    select.value = String(idVehiculo);
+    seleccionarVehiculoGuardado(idVehiculo);
+  }
+}
+
+function abrirModalNuevoVehiculo() {
+  const modal = document.getElementById('modalNuevoVehiculo');
+  const form = document.getElementById('nuevoVehiculoForm');
+  const errDiv = document.getElementById('nuevoVehError');
+  if (form) form.reset();
+  if (errDiv) errDiv.classList.add('hidden');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function cerrarModalNuevoVehiculo() {
+  const modal = document.getElementById('modalNuevoVehiculo');
+  if (modal) modal.classList.add('hidden');
+}
+
+document.getElementById('nuevoVehiculoForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const tipo_vehiculo = document.getElementById('nuevoVehTipo').value;
+  const placa = document.getElementById('nuevoVehPlaca').value.trim();
+  const marca = document.getElementById('nuevoVehMarca').value.trim();
+  const modelo = document.getElementById('nuevoVehModelo').value.trim();
+  const color = document.getElementById('nuevoVehColor').value.trim();
+  const errDiv = document.getElementById('nuevoVehError');
+  const btnSubmit = document.getElementById('btnGuardarVehiculo');
+
+  if (errDiv) errDiv.classList.add('hidden');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Guardando...';
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/mobile/empleado/vehiculos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${currentToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tipo_vehiculo, placa, marca, modelo, color })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      cerrarModalNuevoVehiculo();
+      await cargarVehiculosEmpleado();
+    } else {
+      if (errDiv) {
+        errDiv.textContent = data.message || 'Error al registrar vehículo';
+        errDiv.classList.remove('hidden');
+      } else {
+        alert(`❌ ${data.message}`);
+      }
+    }
+  } catch (err) {
+    if (errDiv) {
+      errDiv.textContent = 'Error de red al registrar vehículo.';
+      errDiv.classList.remove('hidden');
+    }
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Guardar en mi Garaje';
+    }
+  }
+});
+
+async function eliminarVehiculoEmpleado(idVehiculo) {
+  if (!confirm('¿Confirmas que deseas retirar este vehículo de tu garaje?')) return;
+
+  try {
+    const res = await fetch(`${API_URL}/mobile/empleado/vehiculos/${idVehiculo}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${currentToken}` }
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      await cargarVehiculosEmpleado();
+    } else {
+      alert(`❌ ${data.message}`);
+    }
+  } catch (err) {
+    alert('Error al eliminar vehículo');
   }
 }
 
@@ -1127,24 +1305,67 @@ async function cargarHistorialEmpleado() {
     const data = await res.json();
 
     if (res.ok && data.historial && data.historial.length > 0) {
+      employeeHistoryCache = data.historial;
       container.innerHTML = data.historial.map(item => {
         const estaAdentro = item.estado === 'EN_SITIO' || item.estado === 'EN_USO';
         return `
-          <div class="history-item">
-            <div>
-              <strong>${escapeHtml(item.codigo)}</strong>
-              <small>Cupo: ${escapeHtml(item.cupo)} • ${escapeHtml(item.vehiculo)}</small>
+          <div class="history-item flex items-center justify-between p-3 bg-white rounded-2xl border border-slate-100 shadow-sm mb-2 hover:border-orange-200 transition">
+            <div class="flex-1 pr-2">
+              <div class="flex items-center gap-2">
+                <strong class="text-xs font-mono font-black text-slate-800">${escapeHtml(item.codigo)}</strong>
+                <span class="status-chip ${estaAdentro ? 'orange' : 'slate'}">${escapeHtml(item.estado)}</span>
+              </div>
+              <small class="block text-[11px] text-slate-500 mt-0.5">Cupo: <strong class="text-slate-700">${escapeHtml(item.cupo)}</strong> • ${escapeHtml(item.vehiculo)}</small>
             </div>
-            <span class="status-chip ${estaAdentro ? 'orange' : 'slate'}">${escapeHtml(item.estado)}</span>
+            <button type="button" onclick="abrirModalTicket('${escapeHtml(item.codigo)}')" class="px-2.5 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-xl text-xs font-bold text-slate-600 transition flex items-center gap-1 shadow-2xs" title="Ver comprobante de parqueo">
+              <i class="fa-solid fa-receipt text-orange-500"></i> Ticket
+            </button>
           </div>
         `;
       }).join('');
     } else {
+      employeeHistoryCache = [];
       container.innerHTML = '<p class="text-[11px] text-slate-400 text-center py-2">Sin historial reciente.</p>';
     }
   } catch (err) {
     container.innerHTML = '<p class="text-[11px] text-red-400 text-center">No se pudo cargar historial.</p>';
   }
+}
+
+// Modal de Comprobante / Ticket Digital
+function abrirModalTicket(codigo) {
+  const modal = document.getElementById('modalTicketParqueo');
+  if (!modal) return;
+  const item = employeeHistoryCache.find(h => h.codigo === codigo);
+  if (!item) return;
+
+  const codigoEl = document.getElementById('ticketCodigo');
+  const cupoEl = document.getElementById('ticketCupo');
+  const vehiculoEl = document.getElementById('ticketVehiculo');
+  const fechaEl = document.getElementById('ticketFecha');
+  const estadoBadgeEl = document.getElementById('ticketEstadoBadge');
+
+  if (codigoEl) codigoEl.textContent = item.codigo || '—';
+  if (cupoEl) cupoEl.textContent = item.cupo || '—';
+  if (vehiculoEl) vehiculoEl.textContent = item.vehiculo || '—';
+  if (fechaEl) fechaEl.textContent = item.fecha || new Date().toISOString().split('T')[0];
+
+  if (estadoBadgeEl) {
+    const estaAdentro = item.estado === 'EN_SITIO' || item.estado === 'EN_USO';
+    estadoBadgeEl.className = estaAdentro ? 'badge-ocupado font-black text-xs px-2.5 py-1 rounded-full' : 'badge-reservado font-black text-xs px-2.5 py-1 rounded-full';
+    estadoBadgeEl.textContent = item.estado;
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function cerrarModalTicket() {
+  const modal = document.getElementById('modalTicketParqueo');
+  if (modal) modal.classList.add('hidden');
+}
+
+function imprimirTicketParqueo() {
+  window.print();
 }
 
 // Modal de Nueva Reserva
@@ -1155,6 +1376,13 @@ function abrirModalNuevaReserva() {
   document.getElementById('reservaFecha').value = new Date().toISOString().split('T')[0];
   document.getElementById('reservaIdCupo').value = '';
   document.getElementById('reservaSubmitBtn').disabled = true;
+  currentModalPiso = 'TODOS';
+  actualizarBotonesPisoModal();
+  if (employeeVehiclesCache.length === 0) {
+    cargarVehiculosEmpleado();
+  } else {
+    actualizarSelectorVehiculosReserva(employeeVehiclesCache);
+  }
   cargarCuposDisponibles();
 }
 
@@ -1162,15 +1390,37 @@ function cerrarModalNuevaReserva() {
   document.getElementById('modalNuevaReserva').classList.add('hidden');
 }
 
+function cambiarPisoReservaModal(piso) {
+  currentModalPiso = piso;
+  actualizarBotonesPisoModal();
+  renderizarMiniPlanoCupos();
+}
+
+function actualizarBotonesPisoModal() {
+  const btnTodos = document.getElementById('btnModalPisoTODOS');
+  const btnPiso1 = document.getElementById('btnModalPiso1');
+  const btnPiso2 = document.getElementById('btnModalPiso2');
+  [btnTodos, btnPiso1, btnPiso2].forEach(btn => {
+    if (btn) btn.className = 'px-2.5 py-1 rounded-lg text-slate-500 hover:bg-white/60 transition';
+  });
+  if (currentModalPiso === 'TODOS' && btnTodos) {
+    btnTodos.className = 'px-2.5 py-1 rounded-lg bg-white text-slate-900 font-extrabold shadow-2xs';
+  } else if ((currentModalPiso === 'Piso 1' || currentModalPiso === '1') && btnPiso1) {
+    btnPiso1.className = 'px-2.5 py-1 rounded-lg bg-white text-slate-900 font-extrabold shadow-2xs';
+  } else if ((currentModalPiso === 'Piso 2' || currentModalPiso === '2') && btnPiso2) {
+    btnPiso2.className = 'px-2.5 py-1 rounded-lg bg-white text-slate-900 font-extrabold shadow-2xs';
+  }
+}
+
 async function cargarCuposDisponibles() {
   const grid = document.getElementById('availableCuposGrid');
   const count = document.getElementById('availableSpaceCount');
   const selected = document.getElementById('reservaIdCupo');
   const submit = document.getElementById('reservaSubmitBtn');
-  selected.value = '';
-  submit.disabled = true;
-  grid.innerHTML = '<span class="admin-loading">Consultando puestos...</span>';
-  count.textContent = 'Cargando';
+  if (selected) selected.value = '';
+  if (submit) submit.disabled = true;
+  if (grid) grid.innerHTML = '<span class="admin-loading py-4 block text-center text-xs text-slate-400 font-bold"><i class="fa-solid fa-spinner fa-spin text-orange-500 mr-1.5"></i> Consultando puestos libres...</span>';
+  if (count) count.textContent = 'Cargando';
 
   try {
     const tipoVehiculo = document.getElementById('reservaTipoVehiculo').value;
@@ -1181,30 +1431,58 @@ async function cargarCuposDisponibles() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'No se pudo consultar la disponibilidad.');
 
-    const cupos = data.cupos || [];
-    count.textContent = `${cupos.length} libres`;
-    if (!cupos.length) {
-      grid.innerHTML = '<span class="booking-no-spaces">No hay puestos libres para este vehículo.</span>';
-      return;
-    }
-
-    grid.innerHTML = cupos.map(cupo => `
-      <button type="button" class="booking-space" data-cupo-id="${Number(cupo.id_cupo)}" onclick="seleccionarCupo(${Number(cupo.id_cupo)}, '${escapeHtml(cupo.codigo_espacio)}')">
-        <i class="fa-solid fa-square-parking"></i><strong>${escapeHtml(cupo.codigo_espacio)}</strong><small>${escapeHtml(cupo.piso_nivel || '')}</small>
-      </button>`).join('');
+    cuposDisponiblesCache = data.cupos || [];
+    renderizarMiniPlanoCupos();
   } catch (error) {
-    count.textContent = 'Error';
-    grid.innerHTML = `<span class="booking-no-spaces">${escapeHtml(error.message)}</span>`;
+    if (count) count.textContent = 'Error';
+    if (grid) grid.innerHTML = `<span class="booking-no-spaces">${escapeHtml(error.message)}</span>`;
   }
+}
+
+function renderizarMiniPlanoCupos() {
+  const grid = document.getElementById('availableCuposGrid');
+  const count = document.getElementById('availableSpaceCount');
+  if (!grid) return;
+
+  let filtrados = cuposDisponiblesCache;
+  if (currentModalPiso !== 'TODOS') {
+    filtrados = cuposDisponiblesCache.filter(c => {
+      const p = String(c.piso_nivel || '').trim().toLowerCase();
+      return p.includes(currentModalPiso.toLowerCase());
+    });
+  }
+
+  if (count) {
+    count.textContent = `${filtrados.length} libres`;
+  }
+
+  if (!filtrados.length) {
+    grid.innerHTML = '<div class="col-span-full py-6 text-center text-xs text-slate-400 font-semibold"><i class="fa-solid fa-ban text-slate-300 text-lg mb-1 block"></i>No hay bahías disponibles en este piso para tu tipo de vehículo.</div>';
+    return;
+  }
+
+  const selectedId = Number(document.getElementById('reservaIdCupo')?.value || 0);
+
+  grid.innerHTML = filtrados.map(cupo => {
+    const isSelected = selectedId === Number(cupo.id_cupo);
+    const isMoto = (cupo.tipo_permitido || '').toUpperCase() === 'MOTO';
+    return `
+      <button type="button" class="mini-bay-btn ${isSelected ? 'selected' : ''}" data-cupo-id="${Number(cupo.id_cupo)}" onclick="seleccionarCupo(${Number(cupo.id_cupo)}, '${escapeHtml(cupo.codigo_espacio)}')">
+        <i class="fa-solid ${isMoto ? 'fa-motorcycle' : 'fa-car-side'} bay-icon"></i>
+        <span class="bay-code">${escapeHtml(cupo.codigo_espacio)}</span>
+        <span class="bay-floor">${escapeHtml(cupo.piso_nivel || 'P1')}</span>
+      </button>
+    `;
+  }).join('');
 }
 
 function seleccionarCupo(idCupo, codigo) {
   document.getElementById('reservaIdCupo').value = String(idCupo);
-  document.querySelectorAll('.booking-space').forEach(button => {
+  document.querySelectorAll('.mini-bay-btn').forEach(button => {
     button.classList.toggle('selected', Number(button.dataset.cupoId) === Number(idCupo));
   });
   document.getElementById('reservaSubmitBtn').disabled = false;
-  document.getElementById('bookingPickerTitle').textContent = `Puesto ${codigo} seleccionado`;
+  document.getElementById('bookingPickerTitle').textContent = `Bahía ${codigo} seleccionada`;
 }
 
 document.getElementById('reservaForm')?.addEventListener('submit', async (e) => {
@@ -1244,6 +1522,7 @@ document.getElementById('reservaForm')?.addEventListener('submit', async (e) => 
       document.getElementById('reservationSuccessPanel').classList.remove('hidden');
       cargarPaseEmpleado();
       cargarHistorialEmpleado();
+      cargarVehiculosEmpleado();
     } else {
       alert(`❌ Error: ${data.message}`);
       await cargarCuposDisponibles();

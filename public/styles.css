@@ -1060,3 +1060,183 @@ main {
   animation: fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* ========================================================
+   MINI-PLANO 2D EN MODAL DE RESERVA (SELECTOR VISUAL)
+   ======================================================== */
+.mini-blueprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+  background: #0f172a;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid #1e293b;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.mini-bay-btn {
+  background: #1e293b;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.mini-bay-btn:hover {
+  border-color: #ff6b00;
+  transform: translateY(-2px);
+  background: #273549;
+}
+
+.mini-bay-btn.selected {
+  border-color: #ff6b00;
+  background: linear-gradient(180deg, rgba(255, 107, 0, 0.25) 0%, #1e293b 100%);
+  box-shadow: 0 0 14px rgba(255, 107, 0, 0.45);
+}
+
+.mini-bay-btn.selected strong {
+  color: #ff8800;
+}
+
+.mini-bay-btn i {
+  font-size: 16px;
+}
+
+.mini-bay-btn strong {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+
+.mini-bay-btn small {
+  font-size: 8px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+/* ========================================================
+   ESTILOS DE VEHÍCULOS DEL GARAJE
+   ======================================================== */
+.employee-vehicle-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.employee-vehicle-card:hover {
+  border-color: #ff6b00;
+  box-shadow: 0 6px 16px -4px rgba(255, 107, 0, 0.15);
+}
+
+.vehicle-info-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vehicle-type-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff4eb;
+  color: #ff6b00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.vehicle-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-quick-book {
+  background: #ff6b00;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-quick-book:hover {
+  background: #e05d00;
+  transform: translateY(-1px);
+}
+
+.btn-delete-veh {
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-delete-veh:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+/* ========================================================
+   COMPROBANTE / TICKET DIGITAL DE PARQUEO
+   ======================================================== */
+.printable-ticket {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #ffffff;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #modalTicketParqueo,
+  #modalTicketParqueo * {
+    visibility: visible;
+  }
+  #modalTicketParqueo {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    background: white;
+    padding: 0;
+    margin: 0;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+
